@@ -17,7 +17,16 @@ defmodule PetAdoptionWeb.Router do
   scope "/", PetAdoptionWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    #get "/", PageController, :home
+    live "/", PublicLive.Adopt, :index
+    live "/adopt", PublicLive.Adopt, :index
+  end
+
+  scope "/shelter", PetAdoptionWeb do
+    pipe_through :browser
+
+    live "/", ShelterLive.Dashboard, :index
+    live "/dashboard", ShelterLive.Dashboard, :index
   end
 
   # Other scopes may use custom stacks.
