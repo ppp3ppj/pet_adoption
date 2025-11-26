@@ -1,27 +1,28 @@
 defmodule PetAdoptionWeb.PublicLive.Adopt do
   use PetAdoptionWeb, :live_view
-  #use Phoenix.LiveView
   alias PetAdoption.PetManager
 
   @refresh_interval 3000
 
   @impl true
-  def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(PetAdoption.PubSub, "pet_updates")
-      schedule_refresh()
-    end
+def mount(_params, _session, socket) do
+  # First: Set up all assigns
+  socket =
+    socket
+    |> assign(:page_title, "Adopt a Pet")
+    |> assign(:filter_species, "All")
+    |> assign(:show_application_form, false)
+    |> assign(:selected_pet, nil)
+    |> load_pets()
 
-    socket =
-      socket
-      |> assign(:page_title, "Adopt a Pet")
-      |> assign(:filter_species, "All")
-      |> assign(:show_application_form, false)
-      |> assign(:selected_pet, nil)
-      |> load_pets()
-
-    {:ok, socket}
+  # Second: Subscribe and schedule refresh AFTER socket is ready
+  if connected?(socket) do
+    Phoenix.PubSub.subscribe(PetAdoption.PubSub, "pet_updates")
+    schedule_refresh(socket)
   end
+
+  {:ok, socket}
+end
 
   @impl true
   def handle_event("filter_species", %{"species" => species}, socket) do
@@ -42,7 +43,9 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
 
   @impl true
   def handle_event("hide_application_form", _, socket) do
-    {:noreply, assign(socket, :show_application_form, false)}
+    socket = assign(socket, :show_application_form, false)
+    schedule_refresh(socket)
+    {:noreply, socket}
   end
 
   @impl true
@@ -65,6 +68,7 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
           |> assign(:show_application_form, false)
           |> load_pets()
 
+        schedule_refresh(socket)
         {:noreply, socket}
 
       {:error, :pet_not_available} ->
@@ -74,6 +78,7 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
           |> assign(:show_application_form, false)
           |> load_pets()
 
+        schedule_refresh(socket)
         {:noreply, socket}
 
       {:error, _reason} ->
@@ -83,8 +88,9 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
 
   @impl true
   def handle_info(:refresh, socket) do
-    schedule_refresh()
-    {:noreply, load_pets(socket)}
+    socket = load_pets(socket)
+    schedule_refresh(socket)
+    {:noreply, socket}
   end
 
   @impl true
@@ -109,8 +115,11 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
     |> assign(:last_updated, DateTime.utc_now())
   end
 
-  defp schedule_refresh do
-    Process.send_after(self(), :refresh, @refresh_interval)
+  defp schedule_refresh(socket) do
+    # Don't schedule if modal is open
+    unless socket.assigns.show_application_form do
+      Process.send_after(self(), :refresh, @refresh_interval)
+    end
   end
 
   @impl true
@@ -240,14 +249,14 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
 
       <!-- Application Form Modal -->
       <%= if @show_application_form && @selected_pet do %>
-        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" phx-update="ignore" id="application-form-modal">
           <div class="bg-white rounded-lg shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div class="sticky top-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white p-6 rounded-t-lg">
               <h2 class="text-3xl font-bold">Adopt <%= @selected_pet.name %></h2>
               <p class="text-lg"><%= @selected_pet.breed %> • <%= @selected_pet.age %> years</p>
             </div>
 
-            <form phx-submit="submit_application" class="p-8">
+            <form phx-submit="submit_application" onkeydown="return event.key != 'Enter';" class="p-8">
               <div class="mb-8 bg-purple-50 rounded-lg p-6">
                 <h3 class="text-xl font-bold text-gray-800 mb-2">About <%= @selected_pet.name %></h3>
                 <p class="text-gray-700 mb-2"><%= @selected_pet.description %></p>
