@@ -84,9 +84,9 @@ config :libcluster,
       strategy: Cluster.Strategy.Epmd,
       config: [
         hosts: [
-          :"shelter1@choerry3412",
-          :"shelter2@choerry3412",
-          :"shelter3@choerry3412"
+          :"node1@127.0.0.1",
+          :"node2@127.0.0.1",
+          :"node3@127.0.0.1"
         ]
       ]
     ]
