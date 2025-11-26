@@ -17,7 +17,7 @@ defmodule PetAdoptionWeb.Router do
   scope "/", PetAdoptionWeb do
     pipe_through :browser
 
-    #get "/", PageController, :home
+    get "/test", PageController, :home
     live "/", PublicLive.Adopt, :index
     live "/adopt", PublicLive.Adopt, :index
   end
