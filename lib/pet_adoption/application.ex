@@ -7,7 +7,10 @@ defmodule PetAdoption.Application do
 
   @impl true
   def start(_type, _args) do
+    topologies = Application.get_env(:libcluster, :topologies, [])
+
     children = [
+      {Cluster.Supervisor, [topologies, [name: PetAdoption.ClusterSupervisor]]},
       PetAdoptionWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:pet_adoption, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: PetAdoption.PubSub},
