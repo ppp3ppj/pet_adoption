@@ -198,7 +198,7 @@ defmodule PetAdoption.PetManager do
 
       DeltaCrdt.put(state.applications_crdt, application_id, application)
 
-      current_apps = DeltaCrdt.get(state.stats_crdt, :total_applications, 0)
+      current_apps = DeltaCrdt.get(state.stats_crdt, :total_applications) || 0
       DeltaCrdt.put(state.stats_crdt, :total_applications, current_apps + 1)
 
       broadcast_update(:application_submitted, application)
@@ -237,7 +237,7 @@ defmodule PetAdoption.PetManager do
       DeltaCrdt.put(state.applications_crdt, application_id, approved_application)
 
       # Update stats
-      current_adoptions = DeltaCrdt.get(state.stats_crdt, :total_adoptions, 0)
+      current_adoptions = DeltaCrdt.get(state.stats_crdt, :total_adoptions) || 0
       DeltaCrdt.put(state.stats_crdt, :total_adoptions, current_adoptions + 1)
 
       # Reject other pending applications
