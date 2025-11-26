@@ -9,7 +9,10 @@ import Config
 config :pet_adoption, PetAdoptionWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4000")],
+  # Linux
+  #http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4000")],
+  # Windows
+  http: [ip: {0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT") || "4000")],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
@@ -73,3 +76,22 @@ config :phoenix_live_view,
   debug_attributes: true,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
+
+# Multi-shelter cluster configuration
+config :libcluster,
+  topologies: [
+    shelters: [
+      strategy: Cluster.Strategy.Epmd,
+      config: [
+        hosts: [
+          :"shelter1@choerry3412",
+          :"shelter2@choerry3412",
+          :"shelter3@choerry3412"
+        ]
+      ]
+    ]
+  ]
+
+# Shelter configuration
+config :pet_adoption, :shelter_name, System.get_env("SHELTER_NAME", "Animal Rescue Center")
+config :pet_adoption, :shelter_id, System.get_env("SHELTER_ID", "shelter1")
