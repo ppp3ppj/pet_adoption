@@ -17,6 +17,7 @@ defmodule PetAdoption.Application do
       # Start a worker by calling: PetAdoption.Worker.start_link(arg)
       # {PetAdoption.Worker, arg},
       # Start to serve requests, typically the last entry
+      PetAdoption.PetManager,
       PetAdoptionWeb.Endpoint
     ]
 

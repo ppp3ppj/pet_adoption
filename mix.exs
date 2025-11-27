@@ -64,6 +64,7 @@ defmodule PetAdoption.MixProject do
 
       {:libcluster, "~> 3.5.0"},
       {:delta_crdt, "~> 0.6.5"},
+      {:ecto, "~> 3.13.5"},  # ← Just Ecto, no database adapter!
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
 
