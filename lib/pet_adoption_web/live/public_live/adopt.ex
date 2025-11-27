@@ -1,28 +1,33 @@
 defmodule PetAdoptionWeb.PublicLive.Adopt do
   use PetAdoptionWeb, :live_view
   alias PetAdoption.PetManager
+  # ← Changed from Application
+  alias PetAdoption.Schemas.AdoptionApplication
 
   @refresh_interval 3000
 
   @impl true
-def mount(_params, _session, socket) do
-  # First: Set up all assigns
-  socket =
-    socket
-    |> assign(:page_title, "Adopt a Pet")
-    |> assign(:filter_species, "All")
-    |> assign(:show_application_form, false)
-    |> assign(:selected_pet, nil)
-    |> load_pets()
+  def mount(_params, _session, socket) do
+    socket =
+      socket
+      |> assign(:page_title, "Adopt a Pet")
+      |> assign(:filter_species, "All")
+      |> assign(:show_application_form, false)
+      |> assign(:selected_pet, nil)
+      # ← Changed
+      |> assign(
+        :application_changeset,
+        AdoptionApplication.create_changeset(%AdoptionApplication{}, %{})
+      )
+      |> load_pets()
 
-  # Second: Subscribe and schedule refresh AFTER socket is ready
-  if connected?(socket) do
-    Phoenix.PubSub.subscribe(PetAdoption.PubSub, "pet_updates")
-    schedule_refresh(socket)
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(PetAdoption.PubSub, "pet_updates")
+      schedule_refresh(socket)
+    end
+
+    {:ok, socket}
   end
-
-  {:ok, socket}
-end
 
   @impl true
   def handle_event("filter_species", %{"species" => species}, socket) do
@@ -37,6 +42,11 @@ end
       socket
       |> assign(:selected_pet, pet)
       |> assign(:show_application_form, true)
+      # ← Changed
+      |> assign(
+        :application_changeset,
+        AdoptionApplication.create_changeset(%AdoptionApplication{}, %{"pet_id" => pet_id})
+      )
 
     {:noreply, socket}
   end
@@ -48,41 +58,87 @@ end
     {:noreply, socket}
   end
 
+# Add this helper function
+  defp generate_application_id do
+    "app_" <> (:crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower))
+  end
+
   @impl true
   def handle_event("submit_application", %{"application" => app_params}, socket) do
-    pet = socket.assigns.selected_pet
+    pet = socket.assigns.selected_pet |> IO.inspect(label: "Select Pet: ")
+    IO.inspect(app_params, label: "App Params: ")
 
-    case PetManager.submit_application(pet.id,
-      name: app_params["name"],
-      email: app_params["email"],
-      phone: app_params["phone"],
-      has_experience: app_params["has_experience"] == "true",
-      has_other_pets: app_params["has_other_pets"] == "true",
-      home_type: app_params["home_type"],
-      reason: app_params["reason"]
-    ) do
-      {:ok, _application} ->
+    attrs =
+      Map.merge(app_params, %{
+        "pet_id" => pet.id,
+        "applicant_name" => app_params["name"],
+        "applicant_email" => app_params["email"],
+        "applicant_phone" => app_params["phone"],
+        "has_experience" => app_params["has_experience"] == "true",
+        "has_other_pets" => app_params["has_other_pets"] == "true"
+      }) |> IO.inspect(label: "ATTRS: ")
+
+
+    # Validate with changeset first
+    # ← Changed
+    changeset = AdoptionApplication.create_changeset(%AdoptionApplication{}, attrs) |> IO.inspect()
+
+    case Ecto.Changeset.apply_action(changeset, :insert) do
+      {:ok, _valid_app} ->
+        # Now actually submit to PetManager
+        case PetManager.submit_application(pet.id,
+               applicant_name: app_params["name"],
+               applicant_email: app_params["email"],
+               applicant_phone: app_params["phone"],
+               has_experience: app_params["has_experience"] == "true",
+               has_other_pets: app_params["has_other_pets"] == "true",
+               home_type: app_params["home_type"],
+               reason: app_params["reason"]
+             ) do
+          {:ok, _application} ->
+            socket =
+              socket
+              |> put_flash(
+                :info,
+                "Application submitted successfully! The shelter will contact you soon."
+              )
+              |> assign(:show_application_form, false)
+              # ← Changed
+              |> assign(
+                :application_changeset,
+                AdoptionApplication.create_changeset(%AdoptionApplication{}, %{})
+              )
+              |> load_pets()
+
+            schedule_refresh(socket)
+            {:noreply, socket}
+
+          {:error, :pet_not_available} ->
+            socket =
+              socket
+              |> put_flash(:error, "Sorry, this pet is no longer available.")
+              |> assign(:show_application_form, false)
+              |> load_pets()
+
+            schedule_refresh(socket)
+            {:noreply, socket}
+
+          {:error, changeset} ->
+            socket =
+              socket
+              |> assign(:application_changeset, changeset)
+              |> put_flash(:error, "Failed to submit: #{format_errors(changeset)}")
+
+            {:noreply, socket}
+        end
+
+      {:error, changeset} ->
         socket =
           socket
-          |> put_flash(:info, "Application submitted successfully! The shelter will contact you soon.")
-          |> assign(:show_application_form, false)
-          |> load_pets()
+          |> assign(:application_changeset, changeset)
+          |> put_flash(:error, "Validation failed: #{format_errors(changeset)}")
 
-        schedule_refresh(socket)
         {:noreply, socket}
-
-      {:error, :pet_not_available} ->
-        socket =
-          socket
-          |> put_flash(:error, "Sorry, this pet is no longer available.")
-          |> assign(:show_application_form, false)
-          |> load_pets()
-
-        schedule_refresh(socket)
-        {:noreply, socket}
-
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to submit application. Please try again.")}
     end
   end
 
@@ -133,15 +189,15 @@ end
           <p class="text-2xl mb-8">Adopt a pet from our network of caring shelters</p>
           <div class="flex justify-center gap-8 text-center">
             <div>
-              <p class="text-4xl font-bold"><%= @stats.available_pets %></p>
+              <p class="text-4xl font-bold">{@stats.available_pets}</p>
               <p class="text-lg">Pets Available</p>
             </div>
             <div>
-              <p class="text-4xl font-bold"><%= @stats.adopted_pets %></p>
+              <p class="text-4xl font-bold">{@stats.adopted_pets}</p>
               <p class="text-lg">Happy Adoptions</p>
             </div>
             <div>
-              <p class="text-4xl font-bold"><%= @stats.total_shelters %></p>
+              <p class="text-4xl font-bold">{@stats.total_shelters}</p>
               <p class="text-lg">Partner Shelters</p>
             </div>
           </div>
@@ -156,21 +212,23 @@ end
             <button
               phx-click="filter_species"
               phx-value-species="All"
-              class={"px-6 py-3 rounded-lg font-semibold transition #{if @filter_species == "All", do: "bg-purple-600 text-white", else: "bg-gray-200 text-gray-700 hover:bg-gray-300"}"}>
-              All (<%= length(@all_pets) %>)
+              class={"px-6 py-3 rounded-lg font-semibold transition #{if @filter_species == "All", do: "bg-purple-600 text-white", else: "bg-gray-200 text-gray-700 hover:bg-gray-300"}"}
+            >
+              All ({length(@all_pets)})
             </button>
             <%= for {species, count} <- @stats.pets_by_species do %>
               <button
                 phx-click="filter_species"
                 phx-value-species={species}
-                class={"px-6 py-3 rounded-lg font-semibold transition #{if @filter_species == species, do: "bg-purple-600 text-white", else: "bg-gray-200 text-gray-700 hover:bg-gray-300"}"}>
-                <%= species %> (<%= count %>)
+                class={"px-6 py-3 rounded-lg font-semibold transition #{if @filter_species == species, do: "bg-purple-600 text-white", else: "bg-gray-200 text-gray-700 hover:bg-gray-300"}"}
+              >
+                {species} ({count})
               </button>
             <% end %>
           </div>
         </div>
 
-        <!-- Pets Grid -->
+    <!-- Pets Grid -->
         <%= if length(@filtered_pets) == 0 do %>
           <div class="bg-white rounded-lg shadow-lg p-12 text-center">
             <p class="text-2xl text-gray-600 mb-4">No pets available in this category yet.</p>
@@ -181,36 +239,37 @@ end
             <%= for pet <- @filtered_pets do %>
               <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-2xl transition transform hover:-translate-y-1">
                 <div class="h-56 bg-gradient-to-br from-purple-400 via-pink-400 to-blue-400 flex items-center justify-center">
-                  <span class="text-9xl"><%= pet_emoji(pet.species) %></span>
+                  <span class="text-9xl">{pet_emoji(pet.species)}</span>
                 </div>
                 <div class="p-6">
                   <div class="flex items-start justify-between mb-2">
-                    <h3 class="text-2xl font-bold text-gray-800"><%= pet.name %></h3>
+                    <h3 class="text-2xl font-bold text-gray-800">{pet.name}</h3>
                     <span class="bg-purple-100 text-purple-800 px-2 py-1 rounded text-xs font-semibold">
-                      <%= pet.species %>
+                      {pet.species}
                     </span>
                   </div>
                   <p class="text-gray-600 mb-3">
-                    <%= pet.breed %> • <%= pet.age %> <%= if pet.age == 1, do: "year", else: "years" %>
+                    {pet.breed} • {pet.age} {if pet.age == 1, do: "year", else: "years"}
                   </p>
-                  <p class="text-gray-700 mb-4 line-clamp-3"><%= pet.description %></p>
+                  <p class="text-gray-700 mb-4 line-clamp-3">{pet.description}</p>
 
                   <div class="mb-4">
                     <p class="text-sm text-gray-500 mb-1">
-                      <span class="font-semibold">Gender:</span> <%= pet.gender %>
+                      <span class="font-semibold">Gender:</span> {pet.gender}
                     </p>
                     <p class="text-sm text-gray-500 mb-1">
-                      <span class="font-semibold">Health:</span> <%= pet.health_status %>
+                      <span class="font-semibold">Health:</span> {pet.health_status}
                     </p>
                     <p class="text-sm text-gray-500">
-                      <span class="font-semibold">Location:</span> <%= pet.shelter_name %>
+                      <span class="font-semibold">Location:</span> {pet.shelter_name}
                     </p>
                   </div>
 
                   <button
                     phx-click="show_application_form"
                     phx-value-pet_id={pet.id}
-                    class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-lg font-bold text-lg transition transform hover:scale-105">
+                    class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-lg font-bold text-lg transition transform hover:scale-105"
+                  >
                     💝 Apply to Adopt
                   </button>
                 </div>
@@ -219,7 +278,7 @@ end
           </div>
         <% end %>
 
-        <!-- Info Section -->
+    <!-- Info Section -->
         <div class="mt-12 bg-white rounded-lg shadow-lg p-8">
           <h2 class="text-3xl font-bold text-gray-800 mb-4">How It Works</h2>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -241,26 +300,32 @@ end
           </div>
         </div>
 
-        <!-- Footer -->
+    <!-- Footer -->
         <div class="mt-8 text-center text-gray-600">
-          <p class="text-sm">Last updated: <%= Calendar.strftime(@last_updated, "%H:%M:%S UTC") %></p>
+          <p class="text-sm">Last updated: {Calendar.strftime(@last_updated, "%H:%M:%S UTC")}</p>
         </div>
       </div>
 
-      <!-- Application Form Modal -->
+    <!-- Application Form Modal -->
       <%= if @show_application_form && @selected_pet do %>
-        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" phx-update="ignore" id="application-form-modal">
+        <div
+          class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          phx-update="ignore"
+          id="application-form-modal"
+        >
           <div class="bg-white rounded-lg shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div class="sticky top-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white p-6 rounded-t-lg">
-              <h2 class="text-3xl font-bold">Adopt <%= @selected_pet.name %></h2>
-              <p class="text-lg"><%= @selected_pet.breed %> • <%= @selected_pet.age %> years</p>
+              <h2 class="text-3xl font-bold">Adopt {@selected_pet.name}</h2>
+              <p class="text-lg">{@selected_pet.breed} • {@selected_pet.age} years</p>
             </div>
 
             <form phx-submit="submit_application" onkeydown="return event.key != 'Enter';" class="p-8">
               <div class="mb-8 bg-purple-50 rounded-lg p-6">
-                <h3 class="text-xl font-bold text-gray-800 mb-2">About <%= @selected_pet.name %></h3>
-                <p class="text-gray-700 mb-2"><%= @selected_pet.description %></p>
-                <p class="text-sm text-gray-600">Located at: <span class="font-semibold"><%= @selected_pet.shelter_name %></span></p>
+                <h3 class="text-xl font-bold text-gray-800 mb-2">About {@selected_pet.name}</h3>
+                <p class="text-gray-700 mb-2">{@selected_pet.description}</p>
+                <p class="text-sm text-gray-600">
+                  Located at: <span class="font-semibold">{@selected_pet.shelter_name}</span>
+                </p>
               </div>
 
               <h3 class="text-2xl font-bold text-gray-800 mb-6">Your Information</h3>
@@ -273,7 +338,8 @@ end
                     name="application[name]"
                     required
                     class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                    placeholder="John Doe" />
+                    placeholder="John Doe"
+                  />
                 </div>
                 <div>
                   <label class="block text-gray-700 font-semibold mb-2">Email *</label>
@@ -282,7 +348,8 @@ end
                     name="application[email]"
                     required
                     class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                    placeholder="john@example.com" />
+                    placeholder="john@example.com"
+                  />
                 </div>
               </div>
 
@@ -293,7 +360,8 @@ end
                   name="application[phone]"
                   required
                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                  placeholder="(555) 123-4567" />
+                  placeholder="(555) 123-4567"
+                />
               </div>
 
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -302,7 +370,8 @@ end
                   <select
                     name="application[home_type]"
                     required
-                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                  >
                     <option value="">Select...</option>
                     <option value="House">House</option>
                     <option value="Apartment">Apartment</option>
@@ -311,11 +380,14 @@ end
                   </select>
                 </div>
                 <div>
-                  <label class="block text-gray-700 font-semibold mb-2">Experience with pets? *</label>
+                  <label class="block text-gray-700 font-semibold mb-2">
+                    Experience with pets? *
+                  </label>
                   <select
                     name="application[has_experience]"
                     required
-                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                  >
                     <option value="">Select...</option>
                     <option value="true">Yes</option>
                     <option value="false">No</option>
@@ -324,11 +396,14 @@ end
               </div>
 
               <div class="mb-6">
-                <label class="block text-gray-700 font-semibold mb-2">Do you have other pets? *</label>
+                <label class="block text-gray-700 font-semibold mb-2">
+                  Do you have other pets? *
+                </label>
                 <select
                   name="application[has_other_pets]"
                   required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                >
                   <option value="">Select...</option>
                   <option value="true">Yes</option>
                   <option value="false">No</option>
@@ -336,25 +411,30 @@ end
               </div>
 
               <div class="mb-8">
-                <label class="block text-gray-700 font-semibold mb-2">Why do you want to adopt <%= @selected_pet.name %>? *</label>
+                <label class="block text-gray-700 font-semibold mb-2">
+                  Why do you want to adopt {@selected_pet.name}? *
+                </label>
                 <textarea
                   name="application[reason]"
                   required
                   rows="5"
                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                  placeholder="Tell us why you'd be a great match..."></textarea>
+                  placeholder="Tell us why you'd be a great match..."
+                ></textarea>
               </div>
 
               <div class="flex gap-4">
                 <button
                   type="submit"
-                  class="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8 py-4 rounded-lg font-bold text-lg transition transform hover:scale-105">
+                  class="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8 py-4 rounded-lg font-bold text-lg transition transform hover:scale-105"
+                >
                   Submit Application
                 </button>
                 <button
                   type="button"
                   phx-click="hide_application_form"
-                  class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 px-8 py-4 rounded-lg font-bold text-lg transition">
+                  class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 px-8 py-4 rounded-lg font-bold text-lg transition"
+                >
                   Cancel
                 </button>
               </div>
@@ -371,4 +451,14 @@ end
   defp pet_emoji("Rabbit"), do: "🐰"
   defp pet_emoji("Bird"), do: "🦜"
   defp pet_emoji(_), do: "🐾"
+
+  defp format_errors(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+    |> Enum.map(fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
+    |> Enum.join("; ")
+  end
 end

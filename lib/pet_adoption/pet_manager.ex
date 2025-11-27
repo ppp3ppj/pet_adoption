@@ -1,4 +1,7 @@
 defmodule PetAdoption.PetManager do
+  alias PetAdoption.Schemas.Pet
+  alias PetAdoption.Schemas.AdoptionApplication
+
   @moduledoc """
   Manages distributed pet adoption state using CRDTs.
   """
@@ -174,38 +177,40 @@ defmodule PetAdoption.PetManager do
 
   @impl true
   def handle_call({:submit_application, pet_id, application_data}, _from, state) do
-    pet = DeltaCrdt.get(state.pets_crdt, pet_id)
+    pet_map = DeltaCrdt.get(state.pets_crdt, pet_id)
 
-    if pet && pet.status == :available do
+    IO.inspect(pet_map, label: "handle call: submit:")
+
+    if pet_map && pet_map[:status] == :available do
       application_id = generate_application_id()
-      timestamp = DateTime.utc_now()
 
-      application = %{
-        id: application_id,
-        pet_id: pet_id,
-        applicant_name: application_data[:name],
-        applicant_email: application_data[:email],
-        applicant_phone: application_data[:phone],
-        has_experience: application_data[:has_experience],
-        has_other_pets: application_data[:has_other_pets],
-        home_type: application_data[:home_type],
-        reason: application_data[:reason],
-        status: :pending,
-        submitted_at: timestamp,
-        reviewed_at: nil,
-        reviewed_by: nil
-      }
+      attrs =
+        application_data
+        |> Keyword.put(:id, application_id)
+        |> Keyword.put(:pet_id, pet_id)
+        |> Enum.into(%{})
 
-      DeltaCrdt.put(state.applications_crdt, application_id, application)
+      # ← Changed
+      changeset = AdoptionApplication.create_changeset(%AdoptionApplication{}, attrs)
 
-      current_apps = DeltaCrdt.get(state.stats_crdt, :total_applications) || 0
-      DeltaCrdt.put(state.stats_crdt, :total_applications, current_apps + 1)
+      case Ecto.Changeset.apply_action(changeset, :insert) do
+        {:ok, application} ->
+          # ← Changed
+          app_map = AdoptionApplication.to_map(application)
+          DeltaCrdt.put(state.applications_crdt, application_id, app_map)
 
-      broadcast_update(:application_submitted, application)
+          current_apps = DeltaCrdt.get(state.stats_crdt, :total_applications) || 0
+          DeltaCrdt.put(state.stats_crdt, :total_applications, current_apps + 1)
 
-      Logger.info("Application submitted for pet #{pet_id} by #{application_data[:name]}")
+          broadcast_update(:application_submitted, app_map)
 
-      {:reply, {:ok, application}, state}
+          Logger.info("Application submitted for pet #{pet_id} by #{application.applicant_name}")
+          {:reply, {:ok, app_map}, state}
+
+        {:error, changeset} ->
+          Logger.error("Failed to submit application: #{inspect(changeset.errors)}")
+          {:reply, {:error, changeset}, state}
+      end
     else
       {:reply, {:error, :pet_not_available}, state}
     end
@@ -213,41 +218,44 @@ defmodule PetAdoption.PetManager do
 
   @impl true
   def handle_call({:approve_adoption, pet_id, application_id}, _from, state) do
-    pet = DeltaCrdt.get(state.pets_crdt, pet_id)
-    application = DeltaCrdt.get(state.applications_crdt, application_id)
+    pet_map = DeltaCrdt.get(state.pets_crdt, pet_id)
+    app_map = DeltaCrdt.get(state.applications_crdt, application_id)
 
-    if pet && application && pet.status == :available do
-      # Mark pet as adopted
-      adopted_pet =
-        pet
-        |> Map.put(:status, :adopted)
-        |> Map.put(:adopted_at, DateTime.utc_now())
-        |> Map.put(:adopted_by, application.applicant_name)
-        |> Map.put(:updated_at, DateTime.utc_now())
+    if pet_map && app_map && pet_map[:status] == :available do
+      # Convert to structs
+      pet = Pet.from_map(pet_map)
+      # ← Changed
+      application = AdoptionApplication.from_map(app_map)
 
-      DeltaCrdt.put(state.pets_crdt, pet_id, adopted_pet)
+      # Apply changesets
+      pet_changeset = Pet.adopt_changeset(pet, application.applicant_name)
+      # ← Changed
+      app_changeset = AdoptionApplication.approve_changeset(application, state.shelter_name)
 
-      # Update application status
-      approved_application =
-        application
-        |> Map.put(:status, :approved)
-        |> Map.put(:reviewed_at, DateTime.utc_now())
-        |> Map.put(:reviewed_by, state.shelter_name)
+      with {:ok, adopted_pet} <- Ecto.Changeset.apply_action(pet_changeset, :update),
+           {:ok, approved_app} <- Ecto.Changeset.apply_action(app_changeset, :update) do
+        adopted_pet_map = Pet.to_map(adopted_pet)
+        # ← Changed
+        approved_app_map = AdoptionApplication.to_map(approved_app)
 
-      DeltaCrdt.put(state.applications_crdt, application_id, approved_application)
+        DeltaCrdt.put(state.pets_crdt, pet_id, adopted_pet_map)
+        DeltaCrdt.put(state.applications_crdt, application_id, approved_app_map)
 
-      # Update stats
-      current_adoptions = DeltaCrdt.get(state.stats_crdt, :total_adoptions) || 0
-      DeltaCrdt.put(state.stats_crdt, :total_adoptions, current_adoptions + 1)
+        current_adoptions = DeltaCrdt.get(state.stats_crdt, :total_adoptions) || 0
+        DeltaCrdt.put(state.stats_crdt, :total_adoptions, current_adoptions + 1)
 
-      # Reject other pending applications
-      reject_other_applications(state, pet_id, application_id)
+        reject_other_applications(state, pet_id, application_id)
 
-      broadcast_update(:pet_adopted, %{pet: adopted_pet, application: approved_application})
+        broadcast_update(:pet_adopted, %{pet: adopted_pet_map, application: approved_app_map})
 
-      Logger.info("Pet #{pet.name} adopted by #{application.applicant_name}")
+        Logger.info("Pet #{adopted_pet.name} adopted by #{application.applicant_name}")
 
-      {:reply, {:ok, adopted_pet}, state}
+        {:reply, {:ok, adopted_pet_map}, state}
+      else
+        {:error, changeset} ->
+          Logger.error("Failed to approve adoption: #{inspect(changeset.errors)}")
+          {:reply, {:error, changeset}, state}
+      end
     else
       {:reply, {:error, :cannot_approve}, state}
     end

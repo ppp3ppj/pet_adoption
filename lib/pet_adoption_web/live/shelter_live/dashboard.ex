@@ -1,6 +1,7 @@
 defmodule PetAdoptionWeb.ShelterLive.Dashboard do
   use PetAdoptionWeb, :live_view
   alias PetAdoption.PetManager
+  alias PetAdoption.Schemas.Pet
 
   @refresh_interval 2000
 
