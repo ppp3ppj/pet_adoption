@@ -62,6 +62,38 @@ defmodule PetAdoption.Schemas.Pet do
   end
 
   @doc """
+  Changeset for form validation (without shelter info).
+  """
+  def form_changeset(pet \\ %__MODULE__{}, attrs) do
+    # Set default health_status if not provided
+    attrs = Map.put_new(attrs, "health_status", "Healthy")
+
+    pet
+    |> cast(attrs, [
+      :name,
+      :species,
+      :breed,
+      :age,
+      :gender,
+      :description,
+      :health_status
+    ])
+    |> validate_required([
+      :name,
+      :species,
+      :breed,
+      :age,
+      :gender,
+      :description
+    ])
+    |> validate_length(:name, min: 2, max: 100)
+    |> validate_length(:breed, min: 2, max: 100)
+    |> validate_number(:age, greater_than_or_equal_to: 0, less_than_or_equal_to: 30)
+    |> validate_inclusion(:species, ["Dog", "Cat", "Rabbit", "Bird", "Other"])
+    |> validate_inclusion(:gender, ["Male", "Female"])
+  end
+
+  @doc """
   Changeset for updating a pet.
   """
   def update_changeset(pet, attrs) do

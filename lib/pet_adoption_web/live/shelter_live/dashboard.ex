@@ -3,56 +3,84 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
   alias PetAdoption.PetManager
   alias PetAdoption.Schemas.Pet
 
-  @refresh_interval 2000
-
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(PetAdoption.PubSub, "pet_updates")
-      #      schedule_refresh() # it cause bug can reset input every 2 second
     end
 
     socket =
       socket
       |> assign(:page_title, "Shelter Dashboard")
-      |> assign(:active_tab, "pets")
+      |> assign(:active_tab, :pets)
       |> assign(:show_add_pet_modal, false)
       |> assign(:show_application_modal, false)
       |> assign(:selected_pet, nil)
-      |> assign(:selected_application, nil)
+      |> assign(:pet_applications, [])
+      |> assign_pet_form(Pet.form_changeset(%Pet{}, %{}))
       |> load_data()
 
     {:ok, socket}
   end
 
+  defp assign_pet_form(socket, changeset) do
+    assign(socket, :pet_form, to_form(changeset, as: :pet))
+  end
+
+  # Event Handlers
+
   @impl true
-  def handle_event("add_pet", %{"pet" => pet_params}, socket) do
-    case PetManager.add_pet(
-           name: pet_params["name"],
-           species: pet_params["species"],
-           breed: pet_params["breed"],
-           age: String.to_integer(pet_params["age"]),
-           gender: pet_params["gender"],
-           description: pet_params["description"],
-           health_status: pet_params["health_status"]
-         ) do
-      {:ok, _pet} ->
-        socket =
-          socket
-          |> put_flash(:info, "Pet added successfully!")
-          |> assign(:show_add_pet_modal, false)
-          |> load_data()
+  def handle_event("validate_pet", %{"pet" => pet_params}, socket) do
+    changeset =
+      %Pet{}
+      |> Pet.form_changeset(pet_params)
+      |> Map.put(:action, :validate)
 
-        {:noreply, socket}
+    {:noreply, assign_pet_form(socket, changeset)}
+  end
 
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to add pet")}
+  @impl true
+  def handle_event("save_pet", %{"pet" => pet_params}, socket) do
+    changeset = Pet.form_changeset(%Pet{}, pet_params)
+
+    case Ecto.Changeset.apply_action(changeset, :insert) do
+      {:ok, _valid_pet} ->
+        case PetManager.add_pet(
+               name: pet_params["name"],
+               species: pet_params["species"],
+               breed: pet_params["breed"],
+               age: String.to_integer(pet_params["age"]),
+               gender: pet_params["gender"],
+               description: pet_params["description"],
+               health_status: pet_params["health_status"] || "Healthy"
+             ) do
+          {:ok, _pet} ->
+            socket =
+              socket
+              |> put_flash(:info, "Pet added successfully!")
+              |> assign(:show_add_pet_modal, false)
+              |> assign_pet_form(Pet.form_changeset(%Pet{}, %{}))
+              |> load_data()
+
+            {:noreply, socket}
+
+          {:error, _reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to add pet")}
+        end
+
+      {:error, changeset} ->
+        {:noreply, assign_pet_form(socket, changeset)}
     end
   end
 
   @impl true
   def handle_event("show_add_pet_modal", _, socket) do
-    {:noreply, assign(socket, :show_add_pet_modal, true)}
+    socket =
+      socket
+      |> assign(:show_add_pet_modal, true)
+      |> assign_pet_form(Pet.form_changeset(%Pet{}, %{}))
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -114,7 +142,7 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
 
   @impl true
   def handle_event("change_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, :active_tab, tab)}
+    {:noreply, assign(socket, :active_tab, String.to_existing_atom(tab))}
   end
 
   @impl true
@@ -126,16 +154,14 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_info(:refresh, socket) do
-    schedule_refresh()
-    {:noreply, load_data(socket)}
-  end
+  # Info Handlers
 
   @impl true
   def handle_info({:pet_update, _type, _data}, socket) do
     {:noreply, load_data(socket)}
   end
+
+  # Private Functions
 
   defp load_data(socket) do
     shelter_info = PetManager.get_shelter_info()
@@ -151,364 +177,382 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
     |> assign(:last_updated, DateTime.utc_now())
   end
 
-  defp schedule_refresh do
-    Process.send_after(self(), :refresh, @refresh_interval)
-  end
+  # Render
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div class="container mx-auto px-4 py-8">
-        <!-- Header -->
-        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
-          <div class="flex items-center justify-between">
-            <div>
-              <h1 class="text-4xl font-bold text-gray-800 mb-2">🐾 {@shelter_info.shelter_name}</h1>
-              <p class="text-gray-600">Distributed Pet Adoption Network</p>
+    <Layouts.app flash={@flash}>
+      <div class="min-h-screen bg-base-200">
+        <div class="container mx-auto px-4 py-8">
+          <!-- Header Card -->
+          <div class="card bg-base-100 shadow-xl mb-8">
+            <div class="card-body">
+              <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div>
+                  <h1 class="card-title text-3xl md:text-4xl">
+                    🐾 {@shelter_info.shelter_name}
+                  </h1>
+                  <p class="text-base-content/70">Distributed Pet Adoption Network</p>
+                </div>
+                <div class="text-right">
+                  <p class="text-sm text-base-content/60">
+                    Node: <code class="badge badge-ghost">{@shelter_info.node_id}</code>
+                  </p>
+                  <p class="text-sm text-base-content/60">
+                    Connected Shelters:
+                    <span class="badge badge-primary">{length(@shelter_info.connected_nodes)}</span>
+                  </p>
+                </div>
+              </div>
             </div>
-            <div class="text-right">
-              <p class="text-sm text-gray-500">
-                Node: <span class="font-mono">{@shelter_info.node_id}</span>
-              </p>
-              <p class="text-sm text-gray-500">
-                Connected Shelters:
-                <span class="font-bold">{length(@shelter_info.connected_nodes)}</span>
-              </p>
+          </div>
+
+          <!-- Stats Cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <.stat_card
+              title="Available Pets"
+              value={@stats.available_pets}
+              icon="🐕"
+              color="success"
+            />
+            <.stat_card title="Adopted Pets" value={@stats.adopted_pets} icon="❤️" color="secondary" />
+            <.stat_card
+              title="Pending Apps"
+              value={@stats.pending_applications}
+              icon="📋"
+              color="info"
+            />
+            <.stat_card
+              title="Network Shelters"
+              value={@stats.total_shelters}
+              icon="🏥"
+              color="primary"
+            />
+          </div>
+
+          <!-- Action Bar -->
+          <div class="card bg-base-100 shadow mb-6">
+            <div class="card-body py-4">
+              <div class="flex flex-wrap gap-2 items-center">
+                <button phx-click="show_add_pet_modal" class="btn btn-success">
+                  <.icon name="hero-plus" class="w-5 h-5" /> Add Pet
+                </button>
+
+                <div class="join">
+                  <button
+                    phx-click="change_tab"
+                    phx-value-tab="pets"
+                    class={["join-item btn", @active_tab == :pets && "btn-primary"]}
+                  >
+                    Available Pets
+                  </button>
+                  <button
+                    phx-click="change_tab"
+                    phx-value-tab="adopted"
+                    class={["join-item btn", @active_tab == :adopted && "btn-primary"]}
+                  >
+                    Adopted Pets
+                  </button>
+                </div>
+
+                <div class="ml-auto">
+                  <button
+                    phx-click="simulate_partition"
+                    phx-value-duration="5"
+                    class="btn btn-error btn-sm"
+                  >
+                    <.icon name="hero-bolt-slash" class="w-4 h-4" /> Partition 5s
+                  </button>
+                </div>
+              </div>
             </div>
+          </div>
+
+          <!-- Pets Grid -->
+          <%= if @active_tab == :pets do %>
+            <.pets_grid pets={@available_pets} type={:available} />
+          <% else %>
+            <.pets_grid pets={@adopted_pets} type={:adopted} />
+          <% end %>
+
+          <!-- Footer -->
+          <div class="mt-8 text-center text-base-content/60 text-sm">
+            <p>Last updated: {Calendar.strftime(@last_updated, "%H:%M:%S UTC")}</p>
           </div>
         </div>
 
-    <!-- Stats Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-1">
-                <p class="text-gray-500 text-sm">Available Pets</p>
-                <p class="text-3xl font-bold text-green-600">{@stats.available_pets}</p>
-              </div>
-              <div class="text-green-500 text-4xl">🐕</div>
-            </div>
-          </div>
+        <!-- Add Pet Modal -->
+        <.add_pet_modal :if={@show_add_pet_modal} form={@pet_form} />
 
-          <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-1">
-                <p class="text-gray-500 text-sm">Adopted Pets</p>
-                <p class="text-3xl font-bold text-purple-600">{@stats.adopted_pets}</p>
-              </div>
-              <div class="text-purple-500 text-4xl">❤️</div>
-            </div>
-          </div>
+        <!-- Application Modal -->
+        <.application_modal
+          :if={@show_application_modal && @selected_pet}
+          pet={@selected_pet}
+          applications={@pet_applications}
+        />
+      </div>
+    </Layouts.app>
+    """
+  end
 
-          <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-1">
-                <p class="text-gray-500 text-sm">Pending Apps</p>
-                <p class="text-3xl font-bold text-blue-600">{@stats.pending_applications}</p>
-              </div>
-              <div class="text-blue-500 text-4xl">📋</div>
-            </div>
-          </div>
+  # Components
 
-          <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-1">
-                <p class="text-gray-500 text-sm">Network Shelters</p>
-                <p class="text-3xl font-bold text-indigo-600">{@stats.total_shelters}</p>
-              </div>
-              <div class="text-indigo-500 text-4xl">🏥</div>
-            </div>
+  defp stat_card(assigns) do
+    ~H"""
+    <div class="card bg-base-100 shadow">
+      <div class="card-body py-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-base-content/60 text-sm">{@title}</p>
+            <p class={"text-3xl font-bold text-#{@color}"}>{@value}</p>
           </div>
-        </div>
-
-    <!-- Actions Bar -->
-        <div class="bg-white rounded-lg shadow p-4 mb-6 flex gap-2 flex-wrap">
-          <button
-            phx-click="show_add_pet_modal"
-            class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold transition"
-          >
-            ➕ Add Pet
-          </button>
-          <button
-            phx-click="change_tab"
-            phx-value-tab="pets"
-            class={"px-6 py-2 rounded-lg font-semibold transition #{if @active_tab == "pets", do: "bg-blue-600 text-white", else: "bg-gray-200 text-gray-700"}"}
-          >
-            Available Pets
-          </button>
-          <button
-            phx-click="change_tab"
-            phx-value-tab="adopted"
-            class={"px-6 py-2 rounded-lg font-semibold transition #{if @active_tab == "adopted", do: "bg-blue-600 text-white", else: "bg-gray-200 text-gray-700"}"}
-          >
-            Adopted Pets
-          </button>
-          <div class="ml-auto flex gap-2">
-            <button
-              phx-click="simulate_partition"
-              phx-value-duration="5"
-              class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm transition"
-            >
-              🔌 Partition 5s
-            </button>
-          </div>
-        </div>
-
-    <!-- Pets List -->
-        <%= if @active_tab == "pets" do %>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <%= for pet <- @available_pets do %>
-              <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition">
-                <div class="h-48 bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                  <span class="text-8xl">{pet_emoji(pet.species)}</span>
-                </div>
-                <div class="p-6">
-                  <h3 class="text-2xl font-bold text-gray-800 mb-2">{pet.name}</h3>
-                  <p class="text-gray-600 mb-4">{pet.breed} • {pet.age} years • {pet.gender}</p>
-                  <p class="text-gray-700 mb-4 line-clamp-2">{pet.description}</p>
-                  <div class="flex items-center justify-between mb-4">
-                    <span class="text-sm text-gray-500">@ {pet.shelter_name}</span>
-                    <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold">
-                      {pet.health_status}
-                    </span>
-                  </div>
-                  <div class="flex gap-2">
-                    <button
-                      phx-click="view_pet"
-                      phx-value-id={pet.id}
-                      class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition"
-                    >
-                      View Applications
-                    </button>
-                    <button
-                      phx-click="remove_pet"
-                      phx-value-id={pet.id}
-                      class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition"
-                      data-confirm="Are you sure?"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              </div>
-            <% end %>
-          </div>
-        <% end %>
-
-    <!-- Adopted Pets -->
-        <%= if @active_tab == "adopted" do %>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <%= for pet <- @adopted_pets do %>
-              <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-                <div class="h-48 bg-gradient-to-br from-purple-400 to-pink-500 flex items-center justify-center">
-                  <span class="text-8xl">{pet_emoji(pet.species)}</span>
-                </div>
-                <div class="p-6">
-                  <h3 class="text-2xl font-bold text-gray-800 mb-2">{pet.name}</h3>
-                  <p class="text-gray-600 mb-4">{pet.breed} • {pet.age} years</p>
-                  <div class="bg-purple-100 rounded-lg p-4 mb-4">
-                    <p class="text-sm text-purple-800 font-semibold">✅ Adopted by:</p>
-                    <p class="text-purple-900 font-bold">{pet.adopted_by}</p>
-                    <p class="text-xs text-purple-700 mt-2">
-                      {format_datetime(pet.adopted_at)}
-                    </p>
-                  </div>
-                  <p class="text-sm text-gray-500">From: {pet.shelter_name}</p>
-                </div>
-              </div>
-            <% end %>
-          </div>
-        <% end %>
-
-    <!-- Footer -->
-        <div class="mt-8 text-center text-gray-600 text-sm">
-          <p>Last updated: {Calendar.strftime(@last_updated, "%H:%M:%S UTC")}</p>
+          <div class="text-4xl">{@icon}</div>
         </div>
       </div>
-
-    <!-- Add Pet Modal -->
-      <%= if @show_add_pet_modal do %>
-        <div class="fixed inset-0 bg-base-100/50 flex items-center justify-center z-50">
-          <div class="bg-base-100 rounded-lg shadow-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 class="text-3xl font-bold text-base-content mb-6">Add New Pet</h2>
-            <form phx-submit="add_pet" onkeydown="return event.key != 'Enter';">
-              <div class="grid grid-cols-2 gap-4 mb-4">
-                <fieldset class="fieldset">
-                  <legend class="fieldset-legend">Name *</legend>
-                  <input
-                    type="text"
-                    name="pet[name]"
-                    required
-                    class="input"
-                    placeholder="Enter pet name"
-                  />
-                </fieldset>
-                <fieldset class="fieldset">
-                  <legend class="fieldset-legend">Species *</legend>
-                  <select
-                    name="pet[species]"
-                    required
-                    class="select"
-                  >
-                    <option disabled value="">Select species...</option>
-                    <option value="Dog">Dog</option>
-                    <option value="Cat">Cat</option>
-                    <option value="Rabbit">Rabbit</option>
-                    <option value="Bird">Bird</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </fieldset>
-              </div>
-              <div class="grid grid-cols-2 gap-4 mb-4">
-                <fieldset class="fieldset">
-                  <legend class="fieldset-legend">Breed *</legend>
-                  <input
-                    type="text"
-                    name="pet[breed]"
-                    required
-                    class="input"
-                    placeholder="Enter e.g., Golden Retriever"
-                  />
-                </fieldset>
-                <fieldset class="fieldset">
-                  <legend class="fieldset-legend">Age (years) *</legend>
-                  <input
-                    type="number"
-                    class="input validator"
-                    required
-                    name="pet[age]"
-                    placeholder="Type a number between 1 to 100"
-                    min="1"
-                    max="100"
-                    title="Must be between be 1 to 100"
-                  />
-                  <p class="validator-hint">Must be between be 1 to 100</p>
-                </fieldset>
-              </div>
-              <div class="grid grid-cols-2 gap-4 mb-4">
-                <fieldset class="fieldset">
-                  <legend class="fieldset-legend">Gender *</legend>
-                  <select
-                    name="pet[gender]"
-                    required
-                    class="select"
-                  >
-                    <option disabled value="">Select gender...</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                  </select>
-                </fieldset>
-                <div>
-                  <fieldset class="fieldset">
-                    <legend class="fieldset-legend">Health Status</legend>
-                    <input
-                      type="text"
-                      name="pet[health_status]"
-                      value="Healthy"
-                      required
-                      class="input"
-                      placeholder="Enter pet name"
-                    />
-                  </fieldset>
-                </div>
-              </div>
-              <div class="mb-6">
-                <fieldset class="fieldset">
-                  <legend class="fieldset-legend">Description *</legend>
-                  <textarea
-                    placeholder="Tell us about this pet..."
-                    name="pet[description]"
-                    class="textarea h-24 w-full"
-                  ></textarea>
-                </fieldset>
-              </div>
-              <div class="flex gap-4">
-                <button
-                  type="submit"
-                  class="btn btn-soft btn-primary flex-1"
-                >
-                  Add Pet
-                </button>
-                <button
-                  phx-click="hide_add_pet_modal"
-                  class="btn btn-soft btn-error flex-1"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      <% end %>
-
-    <!-- Application Modal -->
-      <%= if @show_application_modal && @selected_pet do %>
-        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div class="bg-white rounded-lg shadow-2xl p-8 max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 class="text-3xl font-bold text-gray-800 mb-4">{@selected_pet.name}</h2>
-            <p class="text-gray-600 mb-6">
-              {@selected_pet.breed} • {@selected_pet.age} years • {@selected_pet.gender}
-            </p>
-
-            <h3 class="text-xl font-bold text-gray-800 mb-4">
-              Applications ({length(@pet_applications)})
-            </h3>
-
-            <%= if length(@pet_applications) == 0 do %>
-              <p class="text-gray-500 mb-6">No applications yet.</p>
-            <% else %>
-              <div class="space-y-4 mb-6">
-                <%= for app <- @pet_applications do %>
-                  <div class={"border rounded-lg p-4 #{application_border_color(app.status)}"}>
-                    <div class="flex items-start justify-between mb-2">
-                      <div>
-                        <p class="font-bold text-gray-800">{app.applicant_name}</p>
-                        <p class="text-sm text-gray-600">
-                          {app.applicant_email} • {app.applicant_phone}
-                        </p>
-                      </div>
-                      <span class={"px-3 py-1 rounded-full text-sm font-semibold #{application_badge_class(app.status)}"}>
-                        {String.upcase(to_string(app.status))}
-                      </span>
-                    </div>
-                    <p class="text-gray-700 mb-2"><strong>Reason:</strong> {app.reason}</p>
-                    <p class="text-sm text-gray-600">
-                      Experience: {if app.has_experience, do: "Yes", else: "No"} | Other Pets: {if app.has_other_pets,
-                        do: "Yes",
-                        else: "No"} | Home: {app.home_type}
-                    </p>
-                    <p class="text-xs text-gray-500 mt-2">
-                      Submitted: {format_datetime(app.submitted_at)}
-                    </p>
-
-                    <%= if app.status == :pending && @selected_pet.status == :available do %>
-                      <button
-                        phx-click="approve_adoption"
-                        phx-value-pet_id={@selected_pet.id}
-                        phx-value-app_id={app.id}
-                        class="mt-3 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition"
-                      >
-                        ✅ Approve Adoption
-                      </button>
-                    <% end %>
-                  </div>
-                <% end %>
-              </div>
-            <% end %>
-
-            <button
-              phx-click="hide_application_modal"
-              class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-3 rounded-lg font-semibold transition"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      <% end %>
     </div>
     """
   end
+
+  defp pets_grid(assigns) do
+    ~H"""
+    <%= if @pets == [] do %>
+      <div class="card bg-base-100 shadow">
+        <div class="card-body items-center text-center py-12">
+          <div class="text-6xl mb-4">🐾</div>
+          <h3 class="text-xl font-semibold">No pets found</h3>
+          <p class="text-base-content/60">
+            <%= if @type == :available do %>
+              Add your first pet to get started!
+            <% else %>
+              No pets have been adopted yet.
+            <% end %>
+          </p>
+        </div>
+      </div>
+    <% else %>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <%= for pet <- @pets do %>
+          <.pet_card pet={pet} type={@type} />
+        <% end %>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp pet_card(assigns) do
+    ~H"""
+    <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
+      <figure class={[
+        "h-48 flex items-center justify-center",
+        @type == :available && "bg-gradient-to-br from-primary/20 to-secondary/20",
+        @type == :adopted && "bg-gradient-to-br from-secondary/20 to-accent/20"
+      ]}>
+        <span class="text-8xl">{pet_emoji(@pet.species)}</span>
+      </figure>
+      <div class="card-body">
+        <h2 class="card-title">
+          {@pet.name}
+          <span class="badge badge-secondary badge-sm">{@pet.species}</span>
+        </h2>
+        <p class="text-base-content/70">{@pet.breed} • {@pet.age} years • {@pet.gender}</p>
+        <p class="line-clamp-2">{@pet.description}</p>
+
+        <%= if @type == :available do %>
+          <div class="flex items-center justify-between mt-2">
+            <span class="text-sm text-base-content/60">@ {@pet.shelter_name}</span>
+            <span class="badge badge-success badge-outline">{@pet.health_status}</span>
+          </div>
+          <div class="card-actions justify-end mt-4">
+            <button phx-click="view_pet" phx-value-id={@pet.id} class="btn btn-primary btn-sm">
+              <.icon name="hero-eye" class="w-4 h-4" /> Applications
+            </button>
+            <button
+              phx-click="remove_pet"
+              phx-value-id={@pet.id}
+              data-confirm="Are you sure you want to remove this pet?"
+              class="btn btn-error btn-sm btn-outline"
+            >
+              <.icon name="hero-trash" class="w-4 h-4" />
+            </button>
+          </div>
+        <% else %>
+          <div class="alert alert-success mt-4">
+            <div>
+              <p class="font-semibold">✅ Adopted by: {@pet.adopted_by}</p>
+              <p class="text-sm">{format_datetime(@pet.adopted_at)}</p>
+            </div>
+          </div>
+          <p class="text-sm text-base-content/60 mt-2">From: {@pet.shelter_name}</p>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  defp add_pet_modal(assigns) do
+    ~H"""
+    <div class="modal modal-open">
+      <div class="modal-box max-w-2xl">
+        <h3 class="font-bold text-2xl mb-6">Add New Pet</h3>
+
+        <.form for={@form} id="pet-form" phx-change="validate_pet" phx-submit="save_pet">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <.input field={@form[:name]} type="text" label="Name" placeholder="Enter pet name" />
+            <.input
+              field={@form[:species]}
+              type="select"
+              label="Species"
+              prompt="Select species..."
+              options={["Dog", "Cat", "Rabbit", "Bird", "Other"]}
+            />
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <.input
+              field={@form[:breed]}
+              type="text"
+              label="Breed"
+              placeholder="e.g., Golden Retriever"
+            />
+            <.input
+              field={@form[:age]}
+              type="number"
+              label="Age (years)"
+              placeholder="0-30"
+              min="0"
+              max="30"
+            />
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <.input
+              field={@form[:gender]}
+              type="select"
+              label="Gender"
+              prompt="Select gender..."
+              options={["Male", "Female"]}
+            />
+            <.input
+              field={@form[:health_status]}
+              type="text"
+              label="Health Status"
+              placeholder="e.g., Healthy, Vaccinated"
+            />
+          </div>
+
+          <div class="mt-4">
+            <.input
+              field={@form[:description]}
+              type="textarea"
+              label="Description"
+              placeholder="Tell us about this pet..."
+              rows="3"
+            />
+          </div>
+
+          <div class="modal-action">
+            <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
+              <.icon name="hero-check" class="w-5 h-5" /> Add Pet
+            </button>
+            <button type="button" phx-click="hide_add_pet_modal" class="btn">Cancel</button>
+          </div>
+        </.form>
+      </div>
+      <div class="modal-backdrop bg-base-300/50" phx-click="hide_add_pet_modal"></div>
+    </div>
+    """
+  end
+
+  defp application_modal(assigns) do
+    ~H"""
+    <div class="modal modal-open">
+      <div class="modal-box max-w-3xl">
+        <h3 class="font-bold text-2xl">{@pet.name}</h3>
+        <p class="text-base-content/70 mb-6">
+          {@pet.breed} • {@pet.age} years • {@pet.gender}
+        </p>
+
+        <h4 class="font-semibold text-lg mb-4">
+          Applications
+          <span class="badge badge-neutral ml-2">{length(@applications)}</span>
+        </h4>
+
+        <%= if @applications == [] do %>
+          <div class="alert">
+            <.icon name="hero-inbox" class="w-6 h-6" />
+            <span>No applications yet.</span>
+          </div>
+        <% else %>
+          <div class="space-y-4 max-h-96 overflow-y-auto">
+            <%= for app <- @applications do %>
+              <.application_card app={app} pet={@pet} />
+            <% end %>
+          </div>
+        <% end %>
+
+        <div class="modal-action">
+          <button phx-click="hide_application_modal" class="btn">Close</button>
+        </div>
+      </div>
+      <div class="modal-backdrop bg-base-300/50" phx-click="hide_application_modal"></div>
+    </div>
+    """
+  end
+
+  defp application_card(assigns) do
+    ~H"""
+    <div class={[
+      "card bg-base-200 border",
+      application_border_class(@app.status)
+    ]}>
+      <div class="card-body py-4">
+        <div class="flex items-start justify-between">
+          <div>
+            <p class="font-bold">{@app.applicant_name}</p>
+            <p class="text-sm text-base-content/70">
+              {@app.applicant_email} • {@app.applicant_phone}
+            </p>
+          </div>
+          <span class={["badge", application_badge_class(@app.status)]}>
+            {String.upcase(to_string(@app.status))}
+          </span>
+        </div>
+
+        <p class="mt-2"><strong>Reason:</strong> {@app.reason}</p>
+
+        <div class="flex flex-wrap gap-2 mt-2 text-sm">
+          <span class="badge badge-outline">
+            Experience: {if @app.has_experience, do: "Yes", else: "No"}
+          </span>
+          <span class="badge badge-outline">
+            Other Pets: {if @app.has_other_pets, do: "Yes", else: "No"}
+          </span>
+          <span class="badge badge-outline">Home: {@app.home_type}</span>
+        </div>
+
+        <p class="text-xs text-base-content/60 mt-2">
+          Submitted: {format_datetime(@app.submitted_at)}
+        </p>
+
+        <%= if @app.status == :pending && @pet.status == :available do %>
+          <div class="card-actions justify-end mt-2">
+            <button
+              phx-click="approve_adoption"
+              phx-value-pet_id={@pet.id}
+              phx-value-app_id={@app.id}
+              class="btn btn-success btn-sm"
+            >
+              <.icon name="hero-check" class="w-4 h-4" /> Approve Adoption
+            </button>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  # Helper Functions
 
   defp pet_emoji("Dog"), do: "🐕"
   defp pet_emoji("Cat"), do: "🐈"
@@ -522,11 +566,13 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
     Calendar.strftime(datetime, "%Y-%m-%d %H:%M")
   end
 
-  defp application_badge_class(:pending), do: "bg-yellow-100 text-yellow-800"
-  defp application_badge_class(:approved), do: "bg-green-100 text-green-800"
-  defp application_badge_class(:rejected), do: "bg-red-100 text-red-800"
+  defp application_badge_class(:pending), do: "badge-warning"
+  defp application_badge_class(:approved), do: "badge-success"
+  defp application_badge_class(:rejected), do: "badge-error"
+  defp application_badge_class(_), do: "badge-ghost"
 
-  defp application_border_color(:pending), do: "border-yellow-300"
-  defp application_border_color(:approved), do: "border-green-300 bg-green-50"
-  defp application_border_color(:rejected), do: "border-red-300 bg-red-50"
+  defp application_border_class(:pending), do: "border-warning"
+  defp application_border_class(:approved), do: "border-success bg-success/10"
+  defp application_border_class(:rejected), do: "border-error bg-error/10"
+  defp application_border_class(_), do: ""
 end
