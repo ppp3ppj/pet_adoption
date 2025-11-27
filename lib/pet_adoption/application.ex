@@ -14,10 +14,11 @@ defmodule PetAdoption.Application do
       PetAdoptionWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:pet_adoption, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: PetAdoption.PubSub},
-      # Start a worker by calling: PetAdoption.Worker.start_link(arg)
-      # {PetAdoption.Worker, arg},
+      # Core services - order matters!
+      PetAdoption.Shelter,
+      PetAdoption.CrdtStore,
+      PetAdoption.Cluster,
       # Start to serve requests, typically the last entry
-      PetAdoption.PetManager,
       PetAdoptionWeb.Endpoint
     ]
 
