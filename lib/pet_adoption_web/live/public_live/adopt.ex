@@ -66,77 +66,58 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="min-h-screen bg-base-200">
-        <!-- Hero Section -->
-        <div class="hero bg-gradient-to-r from-primary to-secondary text-primary-content py-16">
-          <div class="hero-content text-center">
-            <div class="max-w-3xl">
-              <h1 class="text-5xl font-bold mb-4">🐾 Find Your Perfect Companion</h1>
-              <p class="text-xl mb-8">Adopt a pet from our network of caring shelters</p>
-              <div class="stats stats-horizontal bg-primary-content/10 shadow">
-                <div class="stat">
-                  <div class="stat-value">{@stats.available_pets}</div>
-                  <div class="stat-desc text-primary-content/80">Pets Available</div>
+        <!-- Compact Header -->
+        <div class="navbar bg-primary text-primary-content shadow-lg">
+          <div class="container mx-auto">
+            <div class="flex-1">
+              <span class="text-2xl font-bold">🐾 Pet Adoption</span>
+            </div>
+            <div class="flex-none gap-4">
+              <div class="stats stats-horizontal bg-primary-content/10 shadow-sm">
+                <div class="stat py-2 px-4">
+                  <div class="stat-value text-lg">{@stats.available_pets}</div>
+                  <div class="stat-desc text-primary-content/70 text-xs">Available</div>
                 </div>
-                <div class="stat">
-                  <div class="stat-value">{@stats.adopted_pets}</div>
-                  <div class="stat-desc text-primary-content/80">Happy Adoptions</div>
-                </div>
-                <div class="stat">
-                  <div class="stat-value">{@stats.total_shelters}</div>
-                  <div class="stat-desc text-primary-content/80">Partner Shelters</div>
+                <div class="stat py-2 px-4">
+                  <div class="stat-value text-lg">{@stats.adopted_pets}</div>
+                  <div class="stat-desc text-primary-content/70 text-xs">Adopted</div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div class="container mx-auto px-4 py-8">
-          <!-- Filter Section -->
-          <div class="card bg-base-100 shadow-xl mb-8">
-            <div class="card-body">
-              <h2 class="card-title text-2xl mb-4">
-                <.icon name="hero-funnel" class="w-6 h-6" /> Filter by Species
-              </h2>
-              <div class="flex gap-2 flex-wrap">
+        <div class="container mx-auto px-4 py-6">
+          <!-- Filter Bar -->
+          <div class="flex flex-wrap items-center gap-3 mb-6">
+            <span class="font-semibold text-base-content/70">
+              <.icon name="hero-funnel" class="w-4 h-4 inline" /> Filter:
+            </span>
+            <div class="tabs tabs-boxed bg-base-100">
+              <button
+                phx-click="filter_species"
+                phx-value-species="All"
+                class={["tab", @filter_species == "All" && "tab-active"]}
+              >
+                All ({length(@all_pets)})
+              </button>
+              <%= for {species, count} <- @stats.pets_by_species do %>
                 <button
                   phx-click="filter_species"
-                  phx-value-species="All"
-                  class={["btn", @filter_species == "All" && "btn-primary" || "btn-ghost"]}
+                  phx-value-species={species}
+                  class={["tab", @filter_species == species && "tab-active"]}
                 >
-                  All ({length(@all_pets)})
+                  {species_emoji(species)} {species} ({count})
                 </button>
-                <%= for {species, count} <- @stats.pets_by_species do %>
-                  <button
-                    phx-click="filter_species"
-                    phx-value-species={species}
-                    class={["btn", @filter_species == species && "btn-primary" || "btn-ghost"]}
-                  >
-                    {species_emoji(species)} {species} ({count})
-                  </button>
-                <% end %>
-              </div>
+              <% end %>
             </div>
+            <span class="ml-auto text-xs text-base-content/50">
+              Updated {Calendar.strftime(@last_updated, "%H:%M:%S")}
+            </span>
           </div>
 
           <!-- Pets Grid -->
           <.pets_grid pets={@filtered_pets} />
-
-          <!-- How It Works Section -->
-          <div class="card bg-base-100 shadow-xl mt-12">
-            <div class="card-body">
-              <h2 class="card-title text-3xl justify-center mb-8">How It Works</h2>
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <.step_card icon="🔍" title="Browse Pets" description="Search our network of shelters to find your perfect match" />
-                <.step_card icon="📝" title="Apply Online" description="Submit your application instantly across all shelters" />
-                <.step_card icon="❤️" title="Take Home" description="The shelter will contact you to complete the adoption" />
-              </div>
-            </div>
-          </div>
-
-          <!-- Footer -->
-          <div class="mt-8 text-center text-base-content/60 text-sm">
-            <p>Last updated: {Calendar.strftime(@last_updated, "%H:%M:%S UTC")}</p>
-          </div>
         </div>
       </div>
     </Layouts.app>
@@ -148,15 +129,17 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
   defp pets_grid(assigns) do
     ~H"""
     <%= if @pets == [] do %>
-      <div class="card bg-base-100 shadow-xl">
-        <div class="card-body items-center text-center py-16">
-          <div class="text-8xl mb-4">🐾</div>
-          <h3 class="text-2xl font-semibold">No pets available</h3>
-          <p class="text-base-content/60">Check back soon or browse other categories!</p>
+      <div class="hero min-h-[300px] bg-base-100 rounded-box">
+        <div class="hero-content text-center">
+          <div>
+            <div class="text-6xl mb-4">🐾</div>
+            <h3 class="text-xl font-semibold">No pets available</h3>
+            <p class="text-base-content/60">Check back soon!</p>
+          </div>
         </div>
       </div>
     <% else %>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         <%= for pet <- @pets do %>
           <.pet_card pet={pet} />
         <% end %>
@@ -167,47 +150,38 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
 
   defp pet_card(assigns) do
     ~H"""
-    <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
-      <figure class="h-48 bg-gradient-to-br from-primary/30 via-secondary/30 to-accent/30 flex items-center justify-center">
-        <span class="text-8xl">{pet_emoji(@pet.species)}</span>
-      </figure>
-      <div class="card-body">
-        <h2 class="card-title flex-wrap">
-          <span class="truncate max-w-[150px]" title={@pet.name}>{@pet.name}</span>
-          <span class="badge badge-secondary badge-sm flex-shrink-0">{@pet.species}</span>
-        </h2>
-        <p class="text-base-content/70">{@pet.breed} • {@pet.age} {if @pet.age == 1, do: "year", else: "years"}</p>
-        <p class="line-clamp-2">{@pet.description}</p>
+    <.link navigate={~p"/adopt/#{@pet.id}/apply"} class="block group">
+      <div class="card bg-base-100 shadow hover:shadow-lg transition-all duration-200 group-hover:-translate-y-0.5">
+        <!-- Image -->
+        <figure class="h-32 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 relative overflow-hidden">
+          <span class="text-6xl group-hover:scale-110 transition-transform duration-200">
+            {pet_emoji(@pet.species)}
+          </span>
+          <div class="absolute top-2 right-2">
+            <span class="badge badge-sm">{@pet.species}</span>
+          </div>
+        </figure>
 
-        <div class="flex flex-wrap gap-2 mt-2">
-          <span class="badge badge-outline badge-sm">{@pet.gender}</span>
-          <span class="badge badge-success badge-outline badge-sm">{@pet.health_status}</span>
-        </div>
+        <!-- Content -->
+        <div class="card-body p-4">
+          <!-- Name & Basic Info -->
+          <h3 class="font-bold text-lg truncate" title={@pet.name}>{@pet.name}</h3>
+          <p class="text-sm text-base-content/60 -mt-1">
+            {@pet.breed} • {@pet.age}y • {@pet.gender}
+          </p>
 
-        <p class="text-sm text-base-content/60 mt-2 truncate" title={@pet.shelter_name}>
-          <.icon name="hero-map-pin" class="w-4 h-4 inline" /> {@pet.shelter_name}
-        </p>
+          <!-- Description -->
+          <p class="text-sm line-clamp-2 mt-1">{@pet.description}</p>
 
-        <div class="card-actions justify-end mt-4">
-          <.link
-            navigate={~p"/adopt/#{@pet.id}/apply"}
-            class="btn btn-primary btn-block"
-          >
-            Apply
-          </.link>
+          <!-- Footer -->
+          <div class="flex items-center justify-between mt-3 pt-3 border-t border-base-200">
+            <span class="text-xs text-base-content/50 truncate max-w-[120px]" title={@pet.shelter_name}>
+              <.icon name="hero-map-pin" class="w-3 h-3 inline" /> {@pet.shelter_name}
+            </span>
+          </div>
         </div>
       </div>
-    </div>
-    """
-  end
-
-  defp step_card(assigns) do
-    ~H"""
-    <div class="text-center">
-      <div class="text-6xl mb-4">{@icon}</div>
-      <h3 class="text-xl font-bold mb-2">{@title}</h3>
-      <p class="text-base-content/60">{@description}</p>
-    </div>
+    </.link>
     """
   end
 
