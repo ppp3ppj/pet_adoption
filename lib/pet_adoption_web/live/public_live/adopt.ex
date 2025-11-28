@@ -3,7 +3,6 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
   require Logger
 
   alias PetAdoption.PetManager
-  alias PetAdoption.Schemas.AdoptionApplication
 
   @impl true
   def mount(_params, _session, socket) do
@@ -15,16 +14,9 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
       socket
       |> assign(:page_title, "Adopt a Pet")
       |> assign(:filter_species, "All")
-      |> assign(:show_application_modal, false)
-      |> assign(:selected_pet, nil)
-      |> assign_application_form(AdoptionApplication.form_changeset(%AdoptionApplication{}, %{}))
       |> load_pets()
 
     {:ok, socket}
-  end
-
-  defp assign_application_form(socket, changeset) do
-    assign(socket, :application_form, to_form(changeset, as: :application))
   end
 
   # Event Handlers
@@ -38,100 +30,6 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
      socket
      |> assign(:filter_species, species)
      |> assign(:filtered_pets, filtered_pets)}
-  end
-
-  @impl true
-  def handle_event("show_application_form", %{"pet_id" => pet_id}, socket) do
-    pet = PetManager.get_pet(pet_id)
-
-    changeset =
-      AdoptionApplication.form_changeset(%AdoptionApplication{}, %{"pet_id" => pet_id})
-
-    socket =
-      socket
-      |> assign(:selected_pet, pet)
-      |> assign(:show_application_modal, true)
-      |> assign_application_form(changeset)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("hide_application_form", _, socket) do
-    socket =
-      socket
-      |> assign(:show_application_modal, false)
-      |> assign_application_form(AdoptionApplication.form_changeset(%AdoptionApplication{}, %{}))
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("validate_application", %{"application" => app_params}, socket) do
-    pet_id = if socket.assigns.selected_pet, do: socket.assigns.selected_pet.id, else: nil
-
-    changeset =
-      %AdoptionApplication{}
-      |> AdoptionApplication.form_changeset(Map.put(app_params, "pet_id", pet_id))
-      |> Map.put(:action, :validate)
-
-    {:noreply, assign_application_form(socket, changeset)}
-  end
-
-  @impl true
-  def handle_event("submit_application", %{"application" => app_params}, socket) do
-    pet = socket.assigns.selected_pet
-
-    attrs =
-      app_params
-      |> Map.put("pet_id", pet.id)
-
-    changeset = AdoptionApplication.form_changeset(%AdoptionApplication{}, attrs)
-
-    case Ecto.Changeset.apply_action(changeset, :insert) do
-      {:ok, _valid_app} ->
-        # Submit to PetManager
-        case PetManager.submit_application(pet.id,
-               applicant_name: app_params["applicant_name"],
-               applicant_email: app_params["applicant_email"],
-               applicant_phone: app_params["applicant_phone"],
-               has_experience: app_params["has_experience"] == "true",
-               has_other_pets: app_params["has_other_pets"] == "true",
-               home_type: app_params["home_type"],
-               reason: app_params["reason"]
-             ) do
-          {:ok, _application} ->
-            socket =
-              socket
-              |> put_flash(:info, "Application submitted successfully! The shelter will contact you soon.")
-              |> assign(:show_application_modal, false)
-              |> assign_application_form(AdoptionApplication.form_changeset(%AdoptionApplication{}, %{}))
-              |> load_pets()
-
-            {:noreply, socket}
-
-          {:error, :pet_not_available} ->
-            socket =
-              socket
-              |> put_flash(:error, "Sorry, this pet is no longer available.")
-              |> assign(:show_application_modal, false)
-              |> load_pets()
-
-            {:noreply, socket}
-
-          {:error, error_changeset} when is_struct(error_changeset, Ecto.Changeset) ->
-            {:noreply,
-             socket
-             |> assign_application_form(error_changeset)
-             |> put_flash(:error, "Failed to submit application")}
-
-          {:error, _reason} ->
-            {:noreply, put_flash(socket, :error, "Failed to submit application")}
-        end
-
-      {:error, changeset} ->
-        {:noreply, assign_application_form(socket, changeset)}
-    end
   end
 
   # Info Handlers
@@ -240,13 +138,6 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
             <p>Last updated: {Calendar.strftime(@last_updated, "%H:%M:%S UTC")}</p>
           </div>
         </div>
-
-        <!-- Application Modal -->
-        <.application_modal
-          :if={@show_application_modal && @selected_pet}
-          pet={@selected_pet}
-          form={@application_form}
-        />
       </div>
     </Layouts.app>
     """
@@ -298,13 +189,12 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
         </p>
 
         <div class="card-actions justify-end mt-4">
-          <button
-            phx-click="show_application_form"
-            phx-value-pet_id={@pet.id}
+          <.link
+            navigate={~p"/adopt/#{@pet.id}/apply"}
             class="btn btn-primary btn-block"
           >
             💝 Apply to Adopt
-          </button>
+          </.link>
         </div>
       </div>
     </div>
@@ -317,109 +207,6 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
       <div class="text-6xl mb-4">{@icon}</div>
       <h3 class="text-xl font-bold mb-2">{@title}</h3>
       <p class="text-base-content/60">{@description}</p>
-    </div>
-    """
-  end
-
-  defp application_modal(assigns) do
-    ~H"""
-    <div class="modal modal-open">
-      <div class="modal-box max-w-2xl">
-        <button
-          phx-click="hide_application_form"
-          class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
-        >
-          ✕
-        </button>
-
-        <h3 class="font-bold text-2xl">Adopt {@pet.name}</h3>
-        <p class="text-base-content/70 mb-6">{@pet.breed} • {@pet.age} years • {@pet.gender}</p>
-
-        <!-- Pet Info Card -->
-        <div class="alert alert-info mb-6">
-          <div>
-            <p class="font-semibold">{@pet.description}</p>
-            <p class="text-sm mt-1">Located at: {@pet.shelter_name}</p>
-          </div>
-        </div>
-
-        <.form
-          for={@form}
-          id="application-form"
-          phx-change="validate_application"
-          phx-submit="submit_application"
-        >
-          <h4 class="font-semibold text-lg mb-4">Your Information</h4>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <.input
-              field={@form[:applicant_name]}
-              type="text"
-              label="Full Name"
-              placeholder="John Doe"
-            />
-            <.input
-              field={@form[:applicant_email]}
-              type="email"
-              label="Email"
-              placeholder="john@example.com"
-            />
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <.input
-              field={@form[:applicant_phone]}
-              type="tel"
-              label="Phone Number"
-              placeholder="(555) 123-4567"
-            />
-            <.input
-              field={@form[:home_type]}
-              type="select"
-              label="Home Type"
-              prompt="Select..."
-              options={["House", "Apartment", "Condo", "Farm"]}
-            />
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <.input
-              field={@form[:has_experience]}
-              type="select"
-              label="Experience with pets?"
-              prompt="Select..."
-              options={[{"Yes", "true"}, {"No", "false"}]}
-            />
-            <.input
-              field={@form[:has_other_pets]}
-              type="select"
-              label="Do you have other pets?"
-              prompt="Select..."
-              options={[{"Yes", "true"}, {"No", "false"}]}
-            />
-          </div>
-
-          <div class="mt-4">
-            <.input
-              field={@form[:reason]}
-              type="textarea"
-              label={"Why do you want to adopt #{@pet.name}?"}
-              placeholder="Tell us why you'd be a great match..."
-              rows="4"
-            />
-          </div>
-
-          <div class="modal-action">
-            <button type="submit" class="btn btn-primary" phx-disable-with="Submitting...">
-              <.icon name="hero-paper-airplane" class="w-5 h-5" /> Submit Application
-            </button>
-            <button type="button" phx-click="hide_application_form" class="btn">
-              Cancel
-            </button>
-          </div>
-        </.form>
-      </div>
-      <div class="modal-backdrop bg-base-300/50" phx-click="hide_application_form"></div>
     </div>
     """
   end

@@ -20,6 +20,7 @@ defmodule PetAdoptionWeb.Router do
     get "/test", PageController, :home
     live "/", PublicLive.Adopt, :index
     live "/adopt", PublicLive.Adopt, :index
+    live "/adopt/:pet_id/apply", PublicLive.Apply, :new
   end
 
   scope "/shelter", PetAdoptionWeb do
