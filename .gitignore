@@ -35,3 +35,5 @@ pet_adoption-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# SQLite snapshot database
+/priv/snapshots/
