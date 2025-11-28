@@ -117,10 +117,10 @@ defmodule PetAdoptionWeb.ShelterLive.Applications do
                     <span class="text-6xl">{pet_emoji(@pet.species)}</span>
                   </div>
                 </div>
-                <div class="flex-1">
-                  <h1 class="text-3xl font-bold flex items-center gap-2">
-                    {@pet.name}
-                    <span class={["badge", status_badge_class(@pet.status)]}>{@pet.status}</span>
+                <div class="flex-1 min-w-0">
+                  <h1 class="text-3xl font-bold flex items-center gap-2 flex-wrap">
+                    <span class="truncate" title={@pet.name}>{@pet.name}</span>
+                    <span class={["badge flex-shrink-0", status_badge_class(@pet.status)]}>{@pet.status}</span>
                   </h1>
                   <p class="text-base-content/70 mt-1">
                     {@pet.species} • {@pet.breed} • {@pet.age} {if @pet.age == 1, do: "year", else: "years"} • {@pet.gender}

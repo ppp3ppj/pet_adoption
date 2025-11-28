@@ -128,9 +128,9 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                   <span class="text-8xl">{pet_emoji(@pet.species)}</span>
                 </figure>
                 <div class="card-body">
-                  <h2 class="card-title text-2xl">
-                    {@pet.name}
-                    <span class="badge badge-secondary">{@pet.species}</span>
+                  <h2 class="card-title text-2xl flex-wrap">
+                    <span class="truncate" title={@pet.name}>{@pet.name}</span>
+                    <span class="badge badge-secondary flex-shrink-0">{@pet.species}</span>
                   </h2>
                   <p class="text-base-content/70">
                     {@pet.breed} • {@pet.age} {if @pet.age == 1, do: "year", else: "years"} • {@pet.gender}
@@ -182,14 +182,16 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                         <.input
                           field={@form[:applicant_name]}
                           type="text"
-                          label="Full Name *"
+                          label="Full Name"
                           placeholder="John Doe"
+                          required
                         />
                         <.input
                           field={@form[:applicant_email]}
                           type="email"
-                          label="Email Address *"
+                          label="Email Address"
                           placeholder="john@example.com"
+                          required
                         />
                       </div>
 
@@ -197,15 +199,17 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                         <.input
                           field={@form[:applicant_phone]}
                           type="tel"
-                          label="Phone Number *"
+                          label="Phone Number"
                           placeholder="(555) 123-4567"
+                          required
                         />
                         <.input
                           field={@form[:home_type]}
                           type="select"
-                          label="Home Type *"
+                          label="Home Type"
                           prompt="Select your home type..."
                           options={["House", "Apartment", "Condo", "Farm"]}
+                          required
                         />
                       </div>
                     </div>
@@ -223,6 +227,7 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                           label="Do you have experience with pets?"
                           prompt="Select..."
                           options={[{"Yes, I have pet experience", "true"}, {"No, this is my first pet", "false"}]}
+                          required
                         />
                         <.input
                           field={@form[:has_other_pets]}
@@ -230,6 +235,7 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                           label="Do you currently have other pets?"
                           prompt="Select..."
                           options={[{"Yes", "true"}, {"No", "false"}]}
+                          required
                         />
                       </div>
                     </div>
@@ -243,9 +249,10 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                       <.input
                         field={@form[:reason]}
                         type="textarea"
-                        label={"Tell us why you'd be a great match for #{@pet.name} *"}
+                        label={"Tell us why you'd be a great match for #{@pet.name}"}
                         placeholder="Share your story... Why do you want to adopt this pet? What kind of home and care can you provide?"
                         rows="5"
+                        required
                       />
                     </div>
 

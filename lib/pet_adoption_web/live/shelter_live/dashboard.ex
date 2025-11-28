@@ -240,24 +240,26 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
         <span class="text-8xl">{pet_emoji(@pet.species)}</span>
       </figure>
       <div class="card-body">
-        <h2 class="card-title">
-          {@pet.name}
-          <span class="badge badge-secondary badge-sm">{@pet.species}</span>
+        <h2 class="card-title flex-wrap">
+          <span class="truncate max-w-[180px]" title={@pet.name}>{@pet.name}</span>
+          <span class="badge badge-secondary badge-sm flex-shrink-0">{@pet.species}</span>
         </h2>
         <p class="text-base-content/70">{@pet.breed} • {@pet.age} years • {@pet.gender}</p>
         <p class="line-clamp-2">{@pet.description}</p>
 
         <%= if @type == :available do %>
           <div class="flex items-center justify-between mt-2">
-            <span class="text-sm text-base-content/60">@ {@pet.shelter_name}</span>
-            <span class="badge badge-success badge-outline">{@pet.health_status}</span>
+            <span class="text-sm text-base-content/60 truncate">@ {@pet.shelter_name}</span>
+            <span class="badge badge-success badge-outline flex-shrink-0">{@pet.health_status}</span>
           </div>
-          <div class="card-actions justify-end mt-4">
+          <div class="card-actions justify-end mt-4 flex-wrap gap-2">
             <.link navigate={~p"/shelter/pets/#{@pet.id}/applications"} class="btn btn-primary btn-sm">
-              <.icon name="hero-eye" class="w-4 h-4" /> Applications
+              <.icon name="hero-eye" class="w-4 h-4" />
+              <span class="hidden sm:inline">Apps</span>
             </.link>
             <.link navigate={~p"/shelter/pets/#{@pet.id}/edit"} class="btn btn-secondary btn-sm">
-              <.icon name="hero-pencil-square" class="w-4 h-4" /> Edit
+              <.icon name="hero-pencil-square" class="w-4 h-4" />
+              <span class="hidden sm:inline">Edit</span>
             </.link>
             <button
               phx-click="remove_pet"

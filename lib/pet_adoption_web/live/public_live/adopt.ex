@@ -172,9 +172,9 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
         <span class="text-8xl">{pet_emoji(@pet.species)}</span>
       </figure>
       <div class="card-body">
-        <h2 class="card-title">
-          {@pet.name}
-          <span class="badge badge-secondary badge-sm">{@pet.species}</span>
+        <h2 class="card-title flex-wrap">
+          <span class="truncate max-w-[150px]" title={@pet.name}>{@pet.name}</span>
+          <span class="badge badge-secondary badge-sm flex-shrink-0">{@pet.species}</span>
         </h2>
         <p class="text-base-content/70">{@pet.breed} • {@pet.age} {if @pet.age == 1, do: "year", else: "years"}</p>
         <p class="line-clamp-2">{@pet.description}</p>
@@ -184,7 +184,7 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
           <span class="badge badge-success badge-outline badge-sm">{@pet.health_status}</span>
         </div>
 
-        <p class="text-sm text-base-content/60 mt-2">
+        <p class="text-sm text-base-content/60 mt-2 truncate" title={@pet.shelter_name}>
           <.icon name="hero-map-pin" class="w-4 h-4 inline" /> {@pet.shelter_name}
         </p>
 
@@ -193,7 +193,7 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
             navigate={~p"/adopt/#{@pet.id}/apply"}
             class="btn btn-primary btn-block"
           >
-            💝 Apply to Adopt
+            Apply
           </.link>
         </div>
       </div>
