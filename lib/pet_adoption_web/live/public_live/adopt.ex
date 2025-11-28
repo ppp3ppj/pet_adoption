@@ -72,8 +72,8 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
             <div class="flex-1">
               <span class="text-2xl font-bold">🐾 Pet Adoption</span>
             </div>
-            <div class="flex-none gap-4">
-              <div class="stats stats-horizontal bg-primary-content/10 shadow-sm">
+            <div class="flex-none gap-6">
+              <div class="stats stats-horizontal bg-primary-content/10 shadow-sm hidden sm:flex">
                 <div class="stat py-2 px-4">
                   <div class="stat-value text-lg">{@stats.available_pets}</div>
                   <div class="stat-desc text-primary-content/70 text-xs">Available</div>
@@ -83,6 +83,10 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
                   <div class="stat-desc text-primary-content/70 text-xs">Adopted</div>
                 </div>
               </div>
+              <.link navigate={~p"/shelter/dashboard"} class="btn btn-ghost btn-sm">
+                <.icon name="hero-building-storefront" class="w-4 h-4" />
+                <span class="hidden sm:inline">Shelter Portal</span>
+              </.link>
             </div>
           </div>
         </div>
@@ -111,9 +115,6 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
                 </button>
               <% end %>
             </div>
-            <span class="ml-auto text-xs text-base-content/50">
-              Updated {Calendar.strftime(@last_updated, "%H:%M:%S")}
-            </span>
           </div>
 
           <!-- Pets Grid -->

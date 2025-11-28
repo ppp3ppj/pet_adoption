@@ -94,13 +94,16 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
                   </h1>
                   <p class="text-base-content/70">Distributed Pet Adoption Network</p>
                 </div>
-                <div class="text-right">
+                <div class="flex flex-col items-end gap-2">
+                  <.link navigate={~p"/adopt"} class="btn btn-primary btn-sm">
+                    <.icon name="hero-globe-alt" class="w-4 h-4" /> View Public Site
+                  </.link>
                   <p class="text-sm text-base-content/60">
-                    Node: <code class="badge badge-ghost">{@shelter_info.node_id}</code>
+                    Node: <code class="badge badge-ghost badge-sm">{@shelter_info.node_id}</code>
                   </p>
                   <p class="text-sm text-base-content/60">
-                    Connected Shelters:
-                    <span class="badge badge-primary">{length(@shelter_info.connected_nodes)}</span>
+                    Connected:
+                    <span class="badge badge-primary badge-sm">{length(@shelter_info.connected_nodes)}</span>
                   </p>
                 </div>
               </div>
