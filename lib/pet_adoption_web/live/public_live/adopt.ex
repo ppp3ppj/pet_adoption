@@ -5,10 +5,12 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
   alias PetAdoption.PetManager
   alias PetAdoption.Schemas.AdoptionApplication
 
-  @refresh_interval 3000
-
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(PetAdoption.PubSub, "pet_updates")
+    end
+
     socket =
       socket
       |> assign(:page_title, "Adopt a Pet")
@@ -17,11 +19,6 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
       |> assign(:selected_pet, nil)
       |> assign_application_form(AdoptionApplication.form_changeset(%AdoptionApplication{}, %{}))
       |> load_pets()
-
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(PetAdoption.PubSub, "pet_updates")
-      schedule_refresh(socket)
-    end
 
     {:ok, socket}
   end
@@ -34,7 +31,13 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
 
   @impl true
   def handle_event("filter_species", %{"species" => species}, socket) do
-    {:noreply, assign(socket, :filter_species, species)}
+    # Only update filter and recompute filtered_pets from cached all_pets
+    filtered_pets = filter_pets_by_species(socket.assigns.all_pets, species)
+
+    {:noreply,
+     socket
+     |> assign(:filter_species, species)
+     |> assign(:filtered_pets, filtered_pets)}
   end
 
   @impl true
@@ -60,7 +63,6 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
       |> assign(:show_application_modal, false)
       |> assign_application_form(AdoptionApplication.form_changeset(%AdoptionApplication{}, %{}))
 
-    schedule_refresh(socket)
     {:noreply, socket}
   end
 
@@ -106,7 +108,6 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
               |> assign_application_form(AdoptionApplication.form_changeset(%AdoptionApplication{}, %{}))
               |> load_pets()
 
-            schedule_refresh(socket)
             {:noreply, socket}
 
           {:error, :pet_not_available} ->
@@ -116,7 +117,6 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
               |> assign(:show_application_modal, false)
               |> load_pets()
 
-            schedule_refresh(socket)
             {:noreply, socket}
 
           {:error, error_changeset} when is_struct(error_changeset, Ecto.Changeset) ->
@@ -137,16 +137,8 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
   # Info Handlers
 
   @impl true
-  def handle_info(:refresh, socket) do
-    socket = load_pets(socket)
-    schedule_refresh(socket)
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:pet_update, type, _data}, socket) do
-    # Reload pets for any update type (:pet_added, :pet_updated, :pet_removed, :sync, etc.)
-    Logger.debug("Received pet update: #{inspect(type)}")
+  def handle_info({:pet_update, _type, _data}, socket) do
+    # Reload pets only when notified of actual changes
     {:noreply, load_pets(socket)}
   end
 
@@ -156,11 +148,8 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
     pets = PetManager.list_pets(:available)
     stats = PetManager.get_stats()
 
-    filtered_pets =
-      case socket.assigns[:filter_species] || "All" do
-        "All" -> pets
-        species -> Enum.filter(pets, &(&1.species == species))
-      end
+    filter_species = socket.assigns[:filter_species] || "All"
+    filtered_pets = filter_pets_by_species(pets, filter_species)
 
     socket
     |> assign(:all_pets, pets)
@@ -169,11 +158,8 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
     |> assign(:last_updated, DateTime.utc_now())
   end
 
-  defp schedule_refresh(socket) do
-    unless socket.assigns.show_application_modal do
-      Process.send_after(self(), :refresh, @refresh_interval)
-    end
-  end
+  defp filter_pets_by_species(pets, "All"), do: pets
+  defp filter_pets_by_species(pets, species), do: Enum.filter(pets, &(&1.species == species))
 
   # Render
 
