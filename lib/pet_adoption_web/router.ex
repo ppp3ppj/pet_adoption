@@ -28,6 +28,9 @@ defmodule PetAdoptionWeb.Router do
 
     live "/", ShelterLive.Dashboard, :index
     live "/dashboard", ShelterLive.Dashboard, :index
+    live "/pets/new", ShelterLive.PetForm, :new
+    live "/pets/:id/edit", ShelterLive.PetForm, :edit
+    live "/pets/:pet_id/applications", ShelterLive.Applications, :index
   end
 
   # Other scopes may use custom stacks.
