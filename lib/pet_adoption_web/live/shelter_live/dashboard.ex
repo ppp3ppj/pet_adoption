@@ -1,5 +1,7 @@
 defmodule PetAdoptionWeb.ShelterLive.Dashboard do
   use PetAdoptionWeb, :live_view
+  require Logger
+
   alias PetAdoption.PetManager
   alias PetAdoption.Schemas.Pet
 
@@ -14,10 +16,13 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
       |> assign(:page_title, "Shelter Dashboard")
       |> assign(:active_tab, :pets)
       |> assign(:show_add_pet_modal, false)
+      |> assign(:show_edit_pet_modal, false)
       |> assign(:show_application_modal, false)
       |> assign(:selected_pet, nil)
+      |> assign(:editing_pet, nil)
       |> assign(:pet_applications, [])
       |> assign_pet_form(Pet.form_changeset(%Pet{}, %{}))
+      |> assign_edit_pet_form(Pet.form_changeset(%Pet{}, %{}))
       |> load_data()
 
     {:ok, socket}
@@ -25,6 +30,10 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
 
   defp assign_pet_form(socket, changeset) do
     assign(socket, :pet_form, to_form(changeset, as: :pet))
+  end
+
+  defp assign_edit_pet_form(socket, changeset) do
+    assign(socket, :edit_pet_form, to_form(changeset, as: :pet))
   end
 
   # Event Handlers
@@ -86,6 +95,94 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
   @impl true
   def handle_event("hide_add_pet_modal", _, socket) do
     {:noreply, assign(socket, :show_add_pet_modal, false)}
+  end
+
+  @impl true
+  def handle_event("show_edit_pet_modal", %{"id" => pet_id}, socket) do
+    pet = PetManager.get_pet(pet_id)
+
+    if pet do
+      # Convert pet map to form params
+      pet_params = %{
+        "name" => pet.name,
+        "species" => pet.species,
+        "breed" => pet.breed,
+        "age" => to_string(pet.age),
+        "gender" => pet.gender,
+        "description" => pet.description,
+        "health_status" => pet.health_status
+      }
+
+      changeset = Pet.form_changeset(%Pet{}, pet_params)
+
+      socket =
+        socket
+        |> assign(:show_edit_pet_modal, true)
+        |> assign(:editing_pet, pet)
+        |> assign_edit_pet_form(changeset)
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Pet not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("hide_edit_pet_modal", _, socket) do
+    socket =
+      socket
+      |> assign(:show_edit_pet_modal, false)
+      |> assign(:editing_pet, nil)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("validate_edit_pet", %{"pet" => pet_params}, socket) do
+    changeset =
+      %Pet{}
+      |> Pet.form_changeset(pet_params)
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign_edit_pet_form(socket, changeset)}
+  end
+
+  @impl true
+  def handle_event("update_pet", %{"pet" => pet_params}, socket) do
+    editing_pet = socket.assigns.editing_pet
+    changeset = Pet.form_changeset(%Pet{}, pet_params)
+
+    case Ecto.Changeset.apply_action(changeset, :update) do
+      {:ok, _valid_pet} ->
+        updates = %{
+          name: pet_params["name"],
+          species: pet_params["species"],
+          breed: pet_params["breed"],
+          age: String.to_integer(pet_params["age"]),
+          gender: pet_params["gender"],
+          description: pet_params["description"],
+          health_status: pet_params["health_status"] || "Healthy"
+        }
+
+        case PetManager.update_pet(editing_pet.id, updates) do
+          {:ok, _pet} ->
+            socket =
+              socket
+              |> put_flash(:info, "Pet updated successfully!")
+              |> assign(:show_edit_pet_modal, false)
+              |> assign(:editing_pet, nil)
+              |> assign_edit_pet_form(Pet.form_changeset(%Pet{}, %{}))
+              |> load_data()
+
+            {:noreply, socket}
+
+          {:error, _reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to update pet")}
+        end
+
+      {:error, changeset} ->
+        {:noreply, assign_edit_pet_form(socket, changeset)}
+    end
   end
 
   @impl true
@@ -157,7 +254,9 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
   # Info Handlers
 
   @impl true
-  def handle_info({:pet_update, _type, _data}, socket) do
+  def handle_info({:pet_update, type, _data}, socket) do
+    # Reload data for any pet update type (:pet_added, :pet_updated, :pet_removed, :sync, etc.)
+    Logger.debug("Received pet update: #{inspect(type)}")
     {:noreply, load_data(socket)}
   end
 
@@ -285,6 +384,9 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
         <!-- Add Pet Modal -->
         <.add_pet_modal :if={@show_add_pet_modal} form={@pet_form} />
 
+        <!-- Edit Pet Modal -->
+        <.edit_pet_modal :if={@show_edit_pet_modal && @editing_pet} form={@edit_pet_form} pet={@editing_pet} />
+
         <!-- Application Modal -->
         <.application_modal
           :if={@show_application_modal && @selected_pet}
@@ -366,6 +468,9 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
           <div class="card-actions justify-end mt-4">
             <button phx-click="view_pet" phx-value-id={@pet.id} class="btn btn-primary btn-sm">
               <.icon name="hero-eye" class="w-4 h-4" /> Applications
+            </button>
+            <button phx-click="show_edit_pet_modal" phx-value-id={@pet.id} class="btn btn-secondary btn-sm">
+              <.icon name="hero-pencil-square" class="w-4 h-4" /> Edit
             </button>
             <button
               phx-click="remove_pet"
@@ -460,6 +565,83 @@ defmodule PetAdoptionWeb.ShelterLive.Dashboard do
         </.form>
       </div>
       <div class="modal-backdrop bg-base-300/50" phx-click="hide_add_pet_modal"></div>
+    </div>
+    """
+  end
+
+  defp edit_pet_modal(assigns) do
+    ~H"""
+    <div class="modal modal-open">
+      <div class="modal-box max-w-2xl">
+        <h3 class="font-bold text-2xl mb-6">
+          <.icon name="hero-pencil-square" class="w-6 h-6 inline-block mr-2" />
+          Edit Pet: {@pet.name}
+        </h3>
+
+        <.form for={@form} id="edit-pet-form" phx-change="validate_edit_pet" phx-submit="update_pet">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <.input field={@form[:name]} type="text" label="Name" placeholder="Enter pet name" />
+            <.input
+              field={@form[:species]}
+              type="select"
+              label="Species"
+              prompt="Select species..."
+              options={["Dog", "Cat", "Rabbit", "Bird", "Other"]}
+            />
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <.input
+              field={@form[:breed]}
+              type="text"
+              label="Breed"
+              placeholder="e.g., Golden Retriever"
+            />
+            <.input
+              field={@form[:age]}
+              type="number"
+              label="Age (years)"
+              placeholder="0-30"
+              min="0"
+              max="30"
+            />
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <.input
+              field={@form[:gender]}
+              type="select"
+              label="Gender"
+              prompt="Select gender..."
+              options={["Male", "Female"]}
+            />
+            <.input
+              field={@form[:health_status]}
+              type="text"
+              label="Health Status"
+              placeholder="e.g., Healthy, Vaccinated"
+            />
+          </div>
+
+          <div class="mt-4">
+            <.input
+              field={@form[:description]}
+              type="textarea"
+              label="Description"
+              placeholder="Tell us about this pet..."
+              rows="3"
+            />
+          </div>
+
+          <div class="modal-action">
+            <button type="submit" class="btn btn-primary" phx-disable-with="Updating...">
+              <.icon name="hero-check" class="w-5 h-5" /> Update Pet
+            </button>
+            <button type="button" phx-click="hide_edit_pet_modal" class="btn">Cancel</button>
+          </div>
+        </.form>
+      </div>
+      <div class="modal-backdrop bg-base-300/50" phx-click="hide_edit_pet_modal"></div>
     </div>
     """
   end

@@ -1,5 +1,7 @@
 defmodule PetAdoptionWeb.PublicLive.Adopt do
   use PetAdoptionWeb, :live_view
+  require Logger
+
   alias PetAdoption.PetManager
   alias PetAdoption.Schemas.AdoptionApplication
 
@@ -142,7 +144,9 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
   end
 
   @impl true
-  def handle_info({:pet_update, _type, _data}, socket) do
+  def handle_info({:pet_update, type, _data}, socket) do
+    # Reload pets for any update type (:pet_added, :pet_updated, :pet_removed, :sync, etc.)
+    Logger.debug("Received pet update: #{inspect(type)}")
     {:noreply, load_pets(socket)}
   end
 
