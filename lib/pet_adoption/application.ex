@@ -18,6 +18,8 @@ defmodule PetAdoption.Application do
       PetAdoption.Shelter,
       PetAdoption.CrdtStore,
       PetAdoption.Cluster,
+      # Snapshot service for SQLite persistence (every 5 minutes)
+      PetAdoption.Snapshot,
       # Monitor CRDT changes for cross-node LiveView updates
       PetAdoption.CrdtSyncNotifier,
       # Start to serve requests, typically the last entry
