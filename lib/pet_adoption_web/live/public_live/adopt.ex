@@ -14,6 +14,7 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
       socket
       |> assign(:page_title, "Adopt a Pet")
       |> assign(:filter_species, "All")
+      |> assign(:selected_pet, nil)
       |> load_pets()
 
     {:ok, socket}
@@ -30,6 +31,23 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
      socket
      |> assign(:filter_species, species)
      |> assign(:filtered_pets, filtered_pets)}
+  end
+
+  @impl true
+  def handle_event("show_pet_details", %{"id" => pet_id}, socket) do
+    pet = Enum.find(socket.assigns.all_pets, &(&1.id == pet_id))
+    {:noreply, assign(socket, :selected_pet, pet)}
+  end
+
+  @impl true
+  def handle_event("close_pet_details", _params, socket) do
+    {:noreply, assign(socket, :selected_pet, nil)}
+  end
+
+  # Noop handler to prevent click propagation on modal box
+  @impl true
+  def handle_event("noop", _params, socket) do
+    {:noreply, socket}
   end
 
   # Info Handlers
@@ -127,6 +145,9 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
           <.pets_grid pets={@filtered_pets} app_counts={@app_counts} />
         </div>
       </div>
+
+      <!-- Pet Detail Modal (Outside cards) -->
+      <.pet_detail_modal pet={@selected_pet} />
     </Layouts.app>
     """
   end
@@ -157,54 +178,135 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
 
   defp pet_card(assigns) do
     ~H"""
-    <.link navigate={~p"/adopt/#{@pet.id}/apply"} class="block group">
-      <div class="card bg-base-100 shadow hover:shadow-lg transition-all duration-200 group-hover:-translate-y-0.5">
-        <!-- Image -->
-        <figure class="h-32 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 relative overflow-hidden">
-          <span class="text-6xl group-hover:scale-110 transition-transform duration-200">
-            {pet_emoji(@pet.species)}
-          </span>
-          <div class="absolute top-2 right-2">
-            <span class="badge badge-sm">{@pet.species}</span>
-          </div>
-          <!-- Real-time Application Count Badge -->
-          <%= if @app_count.total > 0 do %>
-            <div class="absolute top-2 left-2">
-              <div class="badge badge-warning gap-1 animate-pulse">
-                <.icon name="hero-document-text" class="w-3 h-3" />
-                {@app_count.total}
-              </div>
+    <div class="card bg-base-100 shadow hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5">
+      <!-- Image -->
+      <figure class="h-32 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10 relative overflow-hidden">
+        <span class="text-6xl hover:scale-110 transition-transform duration-200">
+          {pet_emoji(@pet.species)}
+        </span>
+        <div class="absolute top-2 right-2">
+          <span class="badge badge-sm">{@pet.species}</span>
+        </div>
+        <!-- Real-time Application Count Badge -->
+        <%= if @app_count.total > 0 do %>
+          <div class="absolute top-2 left-2">
+            <div class="badge badge-warning gap-1 animate-pulse">
+              <.icon name="hero-document-text" class="w-3 h-3" />
+              {@app_count.total}
             </div>
-          <% end %>
-        </figure>
-
-        <!-- Content -->
-        <div class="card-body p-4">
-          <!-- Name & Basic Info -->
-          <h3 class="font-bold text-lg truncate" title={@pet.name}>{@pet.name}</h3>
-          <p class="text-sm text-base-content/60 -mt-1">
-            {@pet.breed} • {@pet.age}y • {@pet.gender}
-          </p>
-
-          <!-- Description -->
-          <p class="text-sm line-clamp-2 mt-1">{@pet.description}</p>
-
-          <!-- Footer -->
-          <div class="flex items-center justify-between mt-3 pt-3 border-t border-base-200">
-            <span class="text-xs text-base-content/50 truncate max-w-[120px]" title={@pet.shelter_name}>
-              <.icon name="hero-map-pin" class="w-3 h-3 inline" /> {@pet.shelter_name}
-            </span>
-            <!-- Application indicator -->
-            <%= if @app_count.pending > 0 do %>
-              <span class="badge badge-warning badge-xs gap-1" title={"#{@app_count.pending} pending application(s)"}>
-                <.icon name="hero-clock" class="w-2.5 h-2.5" />
-                {@app_count.pending} pending
-              </span>
-            <% end %>
           </div>
+        <% end %>
+      </figure>
+
+      <!-- Content -->
+      <div class="card-body p-4">
+        <!-- Name -->
+        <div class="tooltip tooltip-bottom w-full" data-tip={@pet.name}>
+          <h3 class="font-bold text-lg truncate text-left">{@pet.name}</h3>
+        </div>
+
+        <!-- Pet Details - Badges -->
+        <div class="flex flex-wrap gap-1 -mt-1">
+          <span class="badge badge-outline badge-sm">{@pet.breed}</span>
+          <span class="badge badge-outline badge-sm">{@pet.age}y</span>
+          <span class="badge badge-outline badge-sm">{@pet.gender}</span>
+        </div>
+
+        <!-- Description Preview -->
+        <p class="text-sm line-clamp-2 mt-1 text-base-content/70">{@pet.description}</p>
+
+        <!-- Action Buttons -->
+        <div class="card-actions mt-3 gap-2">
+          <button
+            type="button"
+            class="btn btn-ghost btn-xs flex-1"
+            phx-click="show_pet_details"
+            phx-value-id={@pet.id}
+          >
+            <.icon name="hero-eye" class="w-4 h-4" /> Details
+          </button>
+          <.link navigate={~p"/adopt/#{@pet.id}/apply"} class="btn btn-primary btn-xs flex-1">
+            <.icon name="hero-heart" class="w-4 h-4" /> Apply
+          </.link>
         </div>
       </div>
-    </.link>
+    </div>
+    """
+  end
+
+  defp pet_detail_modal(assigns) do
+    ~H"""
+    <%= if @pet do %>
+      <div class="modal modal-open" phx-click-away="close_pet_details" phx-window-keydown="close_pet_details" phx-key="escape">
+        <div class="modal-box" phx-click="noop">
+          <button
+            type="button"
+            class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+            phx-click="close_pet_details"
+          >
+            ✕
+          </button>
+
+          <div class="flex items-center gap-3 mb-4">
+            <span class="text-4xl">{pet_emoji(@pet.species)}</span>
+            <div>
+              <h3 class="font-bold text-xl">{@pet.name}</h3>
+              <span class="badge badge-secondary">{@pet.species}</span>
+            </div>
+          </div>
+
+          <!-- Details Grid -->
+          <div class="grid grid-cols-3 gap-2 mb-4">
+            <div class="bg-base-200 rounded-lg p-3 text-center">
+              <div class="text-xs text-base-content/60">Breed</div>
+              <div class="font-semibold text-sm">{@pet.breed}</div>
+            </div>
+            <div class="bg-base-200 rounded-lg p-3 text-center">
+              <div class="text-xs text-base-content/60">Age</div>
+              <div class="font-semibold text-sm">{@pet.age} {if @pet.age == 1, do: "year", else: "years"}</div>
+            </div>
+            <div class="bg-base-200 rounded-lg p-3 text-center">
+              <div class="text-xs text-base-content/60">Gender</div>
+              <div class="font-semibold text-sm">{@pet.gender}</div>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div class="mb-4">
+            <div class="text-xs text-base-content/60 mb-1">Description</div>
+            <p class="text-sm">{@pet.description}</p>
+          </div>
+
+          <!-- Health & Shelter -->
+          <div class="grid grid-cols-2 gap-2 mb-4">
+            <div class="flex items-center gap-2 bg-success/10 rounded-lg p-3">
+              <.icon name="hero-heart" class="w-5 h-5 text-success" />
+              <div>
+                <div class="text-xs text-base-content/60">Health</div>
+                <div class="font-semibold text-sm">{@pet.health_status}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 bg-primary/10 rounded-lg p-3">
+              <.icon name="hero-map-pin" class="w-5 h-5 text-primary" />
+              <div>
+                <div class="text-xs text-base-content/60">Shelter</div>
+                <div class="font-semibold text-sm">{@pet.shelter_name}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost" phx-click="close_pet_details">
+              Close
+            </button>
+            <.link navigate={~p"/adopt/#{@pet.id}/apply"} class="btn btn-primary">
+              <.icon name="hero-heart" class="w-4 h-4" /> Apply to Adopt
+            </.link>
+          </div>
+        </div>
+        <div class="modal-backdrop bg-black/50" phx-click="close_pet_details"></div>
+      </div>
+    <% end %>
     """
   end
 
