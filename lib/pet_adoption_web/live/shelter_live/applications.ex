@@ -23,6 +23,7 @@ defmodule PetAdoptionWeb.ShelterLive.Applications do
         |> assign(:pet, pet)
         |> assign(:applications, applications)
         |> assign(:filter, :all)
+        |> assign(:confirm_app, nil)
 
       {:ok, socket}
     else
@@ -36,6 +37,40 @@ defmodule PetAdoptionWeb.ShelterLive.Applications do
   end
 
   # Event Handlers
+
+  @impl true
+  def handle_event("show_confirm_modal", %{"app-id" => app_id}, socket) do
+    app = Enum.find(socket.assigns.applications, &(&1.id == app_id))
+    {:noreply, assign(socket, :confirm_app, app)}
+  end
+
+  @impl true
+  def handle_event("close_confirm_modal", _params, socket) do
+    {:noreply, assign(socket, :confirm_app, nil)}
+  end
+
+  @impl true
+  def handle_event("confirm_approve_adoption", _params, socket) do
+    pet = socket.assigns.pet
+    app = socket.assigns.confirm_app
+
+    case PetManager.approve_adoption(pet.id, app.id) do
+      {:ok, _pet} ->
+        socket =
+          socket
+          |> assign(:confirm_app, nil)
+          |> put_flash(:info, "🎉 Adoption approved! The applicant will be notified.")
+          |> redirect(to: ~p"/shelter/dashboard")
+
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply,
+         socket
+         |> assign(:confirm_app, nil)
+         |> put_flash(:error, "Failed to approve adoption. Please try again.")}
+    end
+  end
 
   @impl true
   def handle_event("approve_adoption", %{"app_id" => app_id}, socket) do
@@ -194,11 +229,54 @@ defmodule PetAdoptionWeb.ShelterLive.Applications do
           </div>
         </div>
       </div>
+
+      <!-- Confirm Approval Modal -->
+      <.confirm_modal app={@confirm_app} pet={@pet} />
     </Layouts.app>
     """
   end
 
   # Components
+
+  defp confirm_modal(assigns) do
+    ~H"""
+    <%= if @app do %>
+      <div class="modal modal-open">
+        <div class="modal-box">
+          <h3 class="font-bold text-lg flex items-center gap-2">
+            <.icon name="hero-exclamation-triangle" class="w-6 h-6 text-warning" />
+            Confirm Adoption Approval
+          </h3>
+
+          <div class="py-4">
+            <p class="mb-4">
+              Are you sure you want to approve this adoption?
+            </p>
+
+            <div class="alert alert-info">
+              <.icon name="hero-information-circle" class="w-5 h-5" />
+              <div>
+                <p><strong>{@app.applicant_name}</strong> will adopt <strong>{@pet.name}</strong></p>
+                <p class="text-sm">This action cannot be undone.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost" phx-click="close_confirm_modal">
+              Cancel
+            </button>
+            <button type="button" class="btn btn-success" phx-click="confirm_approve_adoption">
+              <.icon name="hero-check-circle" class="w-5 h-5" />
+              Yes, Approve
+            </button>
+          </div>
+        </div>
+        <div class="modal-backdrop bg-black/50" phx-click="close_confirm_modal"></div>
+      </div>
+    <% end %>
+    """
+  end
 
   defp application_card(assigns) do
     ~H"""
@@ -261,10 +339,9 @@ defmodule PetAdoptionWeb.ShelterLive.Applications do
           <%= if @app.status == :pending && @pet.status == :available do %>
             <div class="flex flex-col gap-2">
               <button
-                phx-click="approve_adoption"
-                phx-value-app_id={@app.id}
+                phx-click="show_confirm_modal"
+                phx-value-app-id={@app.id}
                 class="btn btn-success"
-                data-confirm="Are you sure you want to approve this adoption? This will mark #{@pet.name} as adopted."
               >
                 <.icon name="hero-check-circle" class="w-5 h-5" />
                 Approve Adoption
