@@ -132,22 +132,38 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                     <span class="truncate" title={@pet.name}>{@pet.name}</span>
                     <span class="badge badge-secondary flex-shrink-0">{@pet.species}</span>
                   </h2>
-                  <p class="text-base-content/70">
-                    {@pet.breed} • {@pet.age} {if @pet.age == 1, do: "year", else: "years"} • {@pet.gender}
-                  </p>
-                  <p class="mt-2">{@pet.description}</p>
 
-                  <div class="divider"></div>
+                  <!-- Pet Details - Badges for better readability -->
+                  <div class="flex flex-wrap gap-2">
+                    <span class="badge badge-outline">{@pet.breed}</span>
+                    <span class="badge badge-outline">{@pet.age} {if @pet.age == 1, do: "yr", else: "yrs"}</span>
+                    <span class="badge badge-outline">{@pet.gender}</span>
+                  </div>
 
-                  <div class="space-y-2 text-sm">
-                    <p class="flex items-center gap-2">
-                      <.icon name="hero-heart" class="w-4 h-4 text-success" />
-                      <span class="font-medium">Health:</span> {@pet.health_status}
-                    </p>
-                    <p class="flex items-center gap-2">
-                      <.icon name="hero-map-pin" class="w-4 h-4 text-primary" />
-                      <span class="font-medium">Shelter:</span> {@pet.shelter_name}
-                    </p>
+                  <!-- Description with Modal -->
+                  <p class="mt-2 text-sm line-clamp-2">{@pet.description}</p>
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-ghost text-primary"
+                    onclick="description_modal.showModal()"
+                  >
+                    See more
+                  </button>
+
+                  <div class="divider my-2"></div>
+
+                  <!-- Health & Shelter - Icons with Tooltips -->
+                  <div class="flex gap-4 justify-center">
+                    <div class="tooltip" data-tip={@pet.health_status}>
+                      <div class="btn btn-circle btn-ghost btn-lg text-success">
+                        <.icon name="hero-heart" class="w-8 h-8" />
+                      </div>
+                    </div>
+                    <div class="tooltip" data-tip={@pet.shelter_name}>
+                      <div class="btn btn-circle btn-ghost btn-lg text-primary">
+                        <.icon name="hero-map-pin" class="w-8 h-8" />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -220,7 +236,7 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                         <.icon name="hero-sparkles" class="w-5 h-5" /> Pet Experience
                       </h3>
 
-                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div class="space-y-4">
                         <.input
                           field={@form[:has_experience]}
                           type="select"
@@ -278,6 +294,25 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
           </div>
         </div>
       </div>
+
+      <!-- Description Modal -->
+      <dialog id="description_modal" class="modal">
+        <div class="modal-box">
+          <h3 class="font-bold text-lg flex items-center gap-2">
+            <span class="text-2xl">{pet_emoji(@pet.species)}</span>
+            About {@pet.name}
+          </h3>
+          <p class="py-4">{@pet.description}</p>
+          <div class="modal-action">
+            <form method="dialog">
+              <button class="btn">Close</button>
+            </form>
+          </div>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button>close</button>
+        </form>
+      </dialog>
     </Layouts.app>
     """
   end
