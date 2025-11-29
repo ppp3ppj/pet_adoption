@@ -200,14 +200,12 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                           type="text"
                           label="Full Name"
                           placeholder="John Doe"
-                          required
                         />
                         <.input
                           field={@form[:applicant_email]}
                           type="email"
                           label="Email Address"
                           placeholder="john@example.com"
-                          required
                         />
                       </div>
 
@@ -217,7 +215,6 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                           type="tel"
                           label="Phone Number"
                           placeholder="(555) 123-4567"
-                          required
                         />
                         <.input
                           field={@form[:home_type]}
@@ -225,7 +222,6 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                           label="Home Type"
                           prompt="Select your home type..."
                           options={["House", "Apartment", "Condo", "Farm"]}
-                          required
                         />
                       </div>
                     </div>
@@ -243,7 +239,6 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                           label="Do you have experience with pets?"
                           prompt="Select..."
                           options={[{"Yes, I have pet experience", "true"}, {"No, this is my first pet", "false"}]}
-                          required
                         />
                         <.input
                           field={@form[:has_other_pets]}
@@ -251,7 +246,6 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                           label="Do you currently have other pets?"
                           prompt="Select..."
                           options={[{"Yes", "true"}, {"No", "false"}]}
-                          required
                         />
                       </div>
                     </div>
@@ -268,7 +262,6 @@ defmodule PetAdoptionWeb.PublicLive.Apply do
                         label={"Tell us why you'd be a great match for #{@pet.name}"}
                         placeholder="Share your story... Why do you want to adopt this pet? What kind of home and care can you provide?"
                         rows="5"
-                        required
                       />
                     </div>
 
