@@ -125,6 +125,26 @@ defmodule PetAdoption.Applications do
     |> Enum.sort_by(& &1.submitted_at, {:desc, DateTime})
   end
 
+  @doc """
+  Gets application counts grouped by pet_id.
+  Returns a map of %{pet_id => %{total: count, pending: count}}
+  """
+  def get_application_counts_by_pet do
+    applications_crdt = CrdtStore.applications_crdt()
+
+    applications_crdt
+    |> DeltaCrdt.to_map()
+    |> Map.values()
+    |> Enum.group_by(& &1.pet_id)
+    |> Enum.map(fn {pet_id, apps} ->
+      {pet_id, %{
+        total: length(apps),
+        pending: Enum.count(apps, &(&1.status == :pending))
+      }}
+    end)
+    |> Enum.into(%{})
+  end
+
   # Private Functions
 
   defp generate_application_id do

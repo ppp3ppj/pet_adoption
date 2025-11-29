@@ -45,6 +45,7 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
   defp load_pets(socket) do
     pets = PetManager.list_pets(:available)
     stats = PetManager.get_stats()
+    app_counts = PetManager.get_application_counts_by_pet()
 
     filter_species = socket.assigns[:filter_species] || "All"
     filtered_pets = filter_pets_by_species(pets, filter_species)
@@ -53,6 +54,7 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
     |> assign(:all_pets, pets)
     |> assign(:filtered_pets, filtered_pets)
     |> assign(:stats, stats)
+    |> assign(:app_counts, app_counts)
     |> assign(:last_updated, DateTime.utc_now())
   end
 
@@ -81,6 +83,10 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
                 <div class="stat py-2 px-4">
                   <div class="stat-value text-lg">{@stats.adopted_pets}</div>
                   <div class="stat-desc text-primary-content/70 text-xs">Adopted</div>
+                </div>
+                <div class="stat py-2 px-4">
+                  <div class="stat-value text-lg text-warning">{@stats.pending_applications}</div>
+                  <div class="stat-desc text-primary-content/70 text-xs">Pending</div>
                 </div>
               </div>
               <.link navigate={~p"/shelter/dashboard"} class="btn btn-ghost btn-sm">
@@ -118,7 +124,7 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
           </div>
 
           <!-- Pets Grid -->
-          <.pets_grid pets={@filtered_pets} />
+          <.pets_grid pets={@filtered_pets} app_counts={@app_counts} />
         </div>
       </div>
     </Layouts.app>
@@ -142,7 +148,7 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
     <% else %>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         <%= for pet <- @pets do %>
-          <.pet_card pet={pet} />
+          <.pet_card pet={pet} app_count={Map.get(@app_counts, pet.id, %{total: 0, pending: 0})} />
         <% end %>
       </div>
     <% end %>
@@ -161,6 +167,15 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
           <div class="absolute top-2 right-2">
             <span class="badge badge-sm">{@pet.species}</span>
           </div>
+          <!-- Real-time Application Count Badge -->
+          <%= if @app_count.total > 0 do %>
+            <div class="absolute top-2 left-2">
+              <div class="badge badge-warning gap-1 animate-pulse">
+                <.icon name="hero-document-text" class="w-3 h-3" />
+                {@app_count.total}
+              </div>
+            </div>
+          <% end %>
         </figure>
 
         <!-- Content -->
@@ -179,6 +194,13 @@ defmodule PetAdoptionWeb.PublicLive.Adopt do
             <span class="text-xs text-base-content/50 truncate max-w-[120px]" title={@pet.shelter_name}>
               <.icon name="hero-map-pin" class="w-3 h-3 inline" /> {@pet.shelter_name}
             </span>
+            <!-- Application indicator -->
+            <%= if @app_count.pending > 0 do %>
+              <span class="badge badge-warning badge-xs gap-1" title={"#{@app_count.pending} pending application(s)"}>
+                <.icon name="hero-clock" class="w-2.5 h-2.5" />
+                {@app_count.pending} pending
+              </span>
+            <% end %>
           </div>
         </div>
       </div>

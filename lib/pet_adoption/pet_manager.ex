@@ -58,6 +58,11 @@ defmodule PetAdoption.PetManager do
   """
   defdelegate get_applications(pet_id), to: Applications
 
+  @doc """
+  Gets application counts grouped by pet_id.
+  """
+  defdelegate get_application_counts_by_pet(), to: Applications
+
   # Stats Operations
 
   @doc """
