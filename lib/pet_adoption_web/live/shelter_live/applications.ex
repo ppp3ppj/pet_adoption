@@ -213,7 +213,9 @@ defmodule PetAdoptionWeb.ShelterLive.Applications do
             <div class="flex items-center gap-3 mb-2">
               <div class="avatar placeholder">
                 <div class="bg-neutral text-neutral-content rounded-full w-12">
+                  <!--
                   <span class="text-lg">{String.first(@app.applicant_name)}</span>
+                  -->
                 </div>
               </div>
               <div>
