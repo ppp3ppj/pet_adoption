@@ -40,3 +40,6 @@ npm-debug.log
 
 # Log files from running nodes
 /logs/
+
+# Shell scripts should be tracked
+!/scripts/
