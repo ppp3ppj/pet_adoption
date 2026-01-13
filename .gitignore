@@ -37,3 +37,9 @@ npm-debug.log
 
 # SQLite snapshot database
 /priv/snapshots/
+
+# Log files from running nodes
+/logs/
+
+# Shell scripts should be tracked
+!/scripts/
